@@ -22,6 +22,7 @@ jest.mock('firebase-admin/firestore', () => ({
 
 jest.mock('../src/services/twilioService', () => ({
   sendWhatsAppMessage,
+  runWithTwilioResponseContext: (_payload: Record<string, unknown>, fn: () => Promise<unknown>) => fn(),
 }));
 
 jest.mock('../src/services/prayerCardService', () => ({

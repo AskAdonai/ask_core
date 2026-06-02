@@ -18,7 +18,7 @@ export const triggerNeedSelection = async (phone: string, user: Partial<User> | 
   if (!user) return;
 
   const db = getFirestore();
-  
+
   // Set user state to awaiting selection
   await db.collection('users').doc(phone.replace('+', '')).update({
     awaitingNeedSelection: true,
@@ -26,8 +26,8 @@ export const triggerNeedSelection = async (phone: string, user: Partial<User> | 
 
   const msg = `What does your heart need today?\n\nReply with a number or theme name to receive targeted prayers and declarations:\n\n1. Healing\n2. Warfare\n10. Finances\n14. Anxiety and Fear\n15. Waiting Seasons`;
 
-  // We send the image + caption
-  await sendWhatsAppMessage(phone, msg, [NEED_MENU_IMAGE_URL]);
+  // We send the message
+  await sendWhatsAppMessage(phone, msg);
   logger.info({ phone }, 'Triggered NEED selection menu');
 };
 
@@ -46,15 +46,15 @@ export const handleNeedSelection = async (phone: string, text: string, user: Par
 
   // Try to match by number first, then by name (fuzzy/exact)
   let selectedTheme: PrayerTheme | null = null;
-  
+
   // Is it a number?
-  const isNumber = /^\\d+$/.test(normalizedText);
+  const isNumber = /^\d+$/.test(normalizedText);
   if (isNumber) {
     const num = parseInt(normalizedText, 10);
     selectedTheme = themes.find(t => t.number === num) || null;
   } else {
     // Try matching name
-    selectedTheme = themes.find(t => 
+    selectedTheme = themes.find(t =>
       t.displayName.toLowerCase().includes(normalizedText) ||
       t.category.toLowerCase().includes(normalizedText) ||
       t.themeId.toLowerCase().includes(normalizedText)
@@ -70,7 +70,7 @@ export const handleNeedSelection = async (phone: string, text: string, user: Par
   // If the theme is "Coming Soon" (available: false)
   if (!selectedTheme.available) {
     await sendWhatsAppMessage(
-      phone, 
+      phone,
       `The "${selectedTheme.displayName}" theme is coming soon! Currently available themes are:\n` +
       `1. Healing\n2. Warfare\n10. Finances\n14. Anxiety and Fear\n15. Waiting Seasons.\n\n` +
       `Please reply with an available number.`
@@ -81,7 +81,7 @@ export const handleNeedSelection = async (phone: string, text: string, user: Par
   // Theme is valid and available! Start the session.
   await startNeedSession(phone, selectedTheme.themeId);
 
-  const confirmMsg = 
+  const confirmMsg =
     `${selectedTheme.displayName}. I am bringing you targeted prayers for this season.\n\n` +
     `Your next SEEK content will carry these prayers. Your journey continues alongside. Type NEED anytime to change your focus.\n\n` +
     `• *SEEK* — today's prayer\n` +

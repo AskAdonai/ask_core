@@ -12,6 +12,7 @@ export interface PrayerCard {
 
   // ── Content ──────────────────────────────────────────────────────────────
   theme: string;                 // thematic label (e.g. "Trust", "Surrender")
+  themeId: string;               // ID linking to a specific theme (e.g. "believe", "healing")
   verse: string;                 // scripture text
   reference: string;             // citation e.g. "John 15:5 (NIV)"
   devotionText: string;          // full written devotion body

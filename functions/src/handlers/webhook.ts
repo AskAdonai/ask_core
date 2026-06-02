@@ -50,10 +50,11 @@ export const handleWebhookRequest = async (req: Request, res: Response): Promise
     // ── Production path ───────────────────────────────────────────────────────
     const { getUser, setPauseState } = await import('../services/userService');
     const { saveJournalEntry, setAwaitingJournal } = await import('../services/journalService');
-    const { sendWhatsAppMessage } = await import('../services/twilioService');
+    const { sendWhatsAppMessage, runWithTwilioResponseContext } = await import('../services/twilioService');
     const stubs = await import('./stubHandlers');
     const db = (await import('firebase-admin/firestore')).getFirestore();
 
+    await runWithTwilioResponseContext(req.body as Record<string, unknown>, async () => {
     const user = await getUser(phone);
     const normalizedText = normalizeInput(Body);
 
@@ -197,6 +198,8 @@ export const handleWebhookRequest = async (req: Request, res: Response): Promise
         await stubs.handleFallback(phone);
     }
     res.status(200).json({ status: 'ok', action: 'routed' });
+    });
+    return;
   } catch (error) {
     logger.error(error, 'Webhook handler error');
     res.status(500).json({ error: 'Internal server error' });

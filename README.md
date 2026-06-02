@@ -13,7 +13,6 @@ This is the distributed microservices backend for the ASK ("Ask, Seek, Knock") D
 ### 1. Requirements
 - Node.js 20+
 - Yarn (`npm install -g yarn`)
-- Docker & Docker Compose
 - Firebase CLI (`npm install -g firebase-tools`)
 
 ### 2. Environment Variables
@@ -28,18 +27,7 @@ cd functions
 yarn install
 ```
 
-### 4. Local Development (Firebase Emulators via Docker)
-We use Docker to run the Firebase emulators (Firestore, Functions, Pub/Sub).
-Ensure Docker is running, then start the emulators:
-```bash
-docker-compose up --build
-```
-This will start:
-- Emulator UI: http://localhost:4000
-- Functions: http://localhost:5001
-- Firestore: http://localhost:8080
-
-### 5. Running Tests
+### 4. Running Tests
 ```bash
 cd functions
 yarn test
