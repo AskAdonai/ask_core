@@ -29,7 +29,7 @@ export interface User {
   lockedUntil: Date | null; // execution lease — null when not being processed
 
   // ── Journey Progress ───────────────────────────────────────────────────────
-  journeyStage: number;          // 1-9  (Believe → Reign)
+  journeyStage: import('./JourneyStage').JourneyStage; // 1-9  (Believe → Reign)
   journeyDayIndex: number;       // day within current stage (1-based)
   vineStage: 'Grafted' | 'Rooted' | 'Growing' | 'Blooming' | 'Fruitful';
   streak: number;                // consecutive daily engagement days

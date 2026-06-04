@@ -206,6 +206,8 @@ export const handleWebhookRequest = async (req: Request, res: Response): Promise
   }
 };
 
+import adminRouter from './adminRouter';
+
 /**
  * Creates and returns a configured Express app with the webhook route mounted.
  * Used by both the local dev server and tests.
@@ -222,6 +224,9 @@ export const createApp = (): express.Application => {
   // Mount on both / (Cloud Function root) and /webhook (named path) to handle both call patterns.
   app.post('/', handleWebhookRequest);
   app.post('/webhook', handleWebhookRequest);
+
+  // Admin API
+  app.use('/admin', adminRouter);
 
   return app;
 };

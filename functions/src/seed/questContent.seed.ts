@@ -27,7 +27,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 1,
   weekTitle: 'In the Beginning — Creation & the Fall',
     books: 'Genesis',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'On which day did God create the sun, moon, and stars?',
@@ -56,7 +56,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 2,
   weekTitle: 'The Call of Abraham',
     books: 'Genesis',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'Where did God call Abram to leave when He first called him?',
@@ -85,7 +85,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 3,
   weekTitle: 'Jacob, Joseph & God\'s Faithfulness',
     books: 'Genesis',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'What new name did God give Jacob after he wrestled with the angel?',
@@ -114,7 +114,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 4,
   weekTitle: 'Moses & the Exodus from Egypt',
     books: 'Exodus',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'What was the name of Moses\' father-in-law?',
@@ -143,7 +143,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 5,
   weekTitle: 'The Law & the Tabernacle',
     books: 'Exodus',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'What did the Israelites worship while Moses was on the mountain?',
@@ -172,7 +172,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 6,
   weekTitle: 'Holiness & Sacrifice — Leviticus',
     books: 'Leviticus',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'What is the central command repeated in Leviticus about God\'s holiness?',
@@ -201,7 +201,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 7,
   weekTitle: 'The Wilderness — Numbers 1–20',
     books: 'Numbers',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'How many spies were sent into Canaan?',
@@ -230,7 +230,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 8,
   weekTitle: 'Numbers 21–36 & The Final Charge',
     books: 'Numbers / Deuteronomy',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'What did God tell Moses to make so the people bitten by snakes could be healed?',
@@ -259,7 +259,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 9,
   weekTitle: 'Deuteronomy — Remember & Obey',
     books: 'Deuteronomy',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'What does Moses say will happen if Israel fully obeys God\'s commands? (Deuteronomy 28)',
@@ -288,7 +288,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 10,
   weekTitle: 'Joshua — Taking the Promised Land',
     books: 'Joshua',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'Who hid the Israelite spies in Jericho?',
@@ -317,7 +317,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 11,
   weekTitle: 'Judges & Ruth — Cycles & Faithfulness',
     books: 'Judges / Ruth',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'What is the repeated pattern in the book of Judges?',
@@ -346,7 +346,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 12,
   weekTitle: '1 Samuel — From Judges to Kings',
     books: '1 Samuel',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'Who was Samuel\'s mother, who dedicated him to the Lord?',
@@ -375,7 +375,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 13,
   weekTitle: '2 Samuel — The Reign of David',
     books: '2 Samuel',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'Which city did David capture and make his capital?',
@@ -404,7 +404,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 14,
   weekTitle: '1 Kings — Solomon\'s Wisdom & the Kingdom Divides',
     books: '1 Kings',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'What did Solomon ask God for when given the chance to ask for anything?',
@@ -433,7 +433,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 15,
   weekTitle: '2 Kings — The Fall of Israel & Judah',
     books: '2 Kings',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'How did Elijah leave earth at the end of his life?',
@@ -462,7 +462,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 16,
   weekTitle: '1 & 2 Chronicles — God\'s Perspective on History',
     books: '1 Chronicles / 2 Chronicles',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'What does Chronicles emphasise more than the books of Samuel and Kings?',
@@ -491,7 +491,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 17,
   weekTitle: 'Ezra, Nehemiah & Esther — Return & Restoration',
     books: 'Ezra / Nehemiah / Esther',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'Which Persian king allowed the Jews to return to Jerusalem and rebuild the Temple?',
@@ -520,7 +520,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 18,
   weekTitle: 'Job — Suffering & the Sovereignty of God',
     books: 'Job',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'How does God describe Job at the start of the book?',
@@ -549,7 +549,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 19,
   weekTitle: 'Job — God Speaks from the Whirlwind',
     books: 'Job',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'From where does God answer Job?',
@@ -578,7 +578,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 20,
   weekTitle: 'Psalms 1–50 — Songs of the Heart',
     books: 'Psalms',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'Psalm 23 begins with which famous declaration?',
@@ -607,7 +607,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 21,
   weekTitle: 'Psalms 51–100 — Confession, Praise & Trust',
     books: 'Psalms',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'Psalm 51 was written by David after which sin was exposed?',
@@ -636,7 +636,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 22,
   weekTitle: 'Psalms 101–150 — From Lament to Praise',
     books: 'Psalms',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'Psalm 119 is the longest chapter in the Bible. What is its central theme?',
@@ -665,7 +665,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 23,
   weekTitle: 'Proverbs — The Way of Wisdom',
     books: 'Proverbs',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'What is the "beginning of wisdom" according to Proverbs?',
@@ -694,7 +694,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 24,
   weekTitle: 'Ecclesiastes & Song of Solomon',
     books: 'Ecclesiastes / Song of Solomon',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'What word does Ecclesiastes use to describe life "under the sun" without God?',
@@ -723,7 +723,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 25,
   weekTitle: 'Isaiah 1–35 — Judgment & Hope',
     books: 'Isaiah',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'In Isaiah 6, what did Isaiah see in his vision of God?',
@@ -752,7 +752,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 26,
   weekTitle: 'Isaiah 36–66 — The Suffering Servant',
     books: 'Isaiah',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'Isaiah 40:31 promises that those who wait on the Lord will do what?',
@@ -781,7 +781,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 27,
   weekTitle: 'Jeremiah — The Weeping Prophet',
     books: 'Jeremiah',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'Why is Jeremiah called "The Weeping Prophet"?',
@@ -810,7 +810,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 28,
   weekTitle: 'Jeremiah 30–52 & Lamentations',
     books: 'Jeremiah / Lamentations',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'Jeremiah 31:31 promises a New Covenant. Where will God write this covenant?',
@@ -839,7 +839,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 29,
   weekTitle: 'Ezekiel — Visions & the Glory of God',
     books: 'Ezekiel',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'Ezekiel\'s vision in chapter 37 is known as the Valley of what?',
@@ -868,7 +868,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 30,
   weekTitle: 'Daniel — Faith Under Fire',
     books: 'Daniel',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'What did Daniel and his friends refuse to eat in Babylon?',
@@ -897,7 +897,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 31,
   weekTitle: 'The Minor Prophets I — Hosea to Amos',
     books: 'Hosea / Joel / Amos',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'What did God ask Hosea to do that became a picture of God\'s love for Israel?',
@@ -926,7 +926,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 32,
   weekTitle: 'The Minor Prophets II — Obadiah to Zephaniah',
     books: 'Obadiah / Jonah / Micah / Nahum / Habakkuk / Zephaniah',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'Why did Jonah initially refuse to go to Nineveh?',
@@ -955,7 +955,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 33,
   weekTitle: 'The Minor Prophets III — Haggai, Zechariah & Malachi',
     books: 'Haggai / Zechariah / Malachi',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'What was Haggai\'s main message to the returned exiles?',
@@ -988,7 +988,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 34,
   weekTitle: 'Matthew 1–14 — The King Has Come',
     books: 'Matthew',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'The Sermon on the Mount begins with the Beatitudes. Which group does Jesus say will "inherit the earth"?',
@@ -1017,7 +1017,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 35,
   weekTitle: 'Matthew 15–28 — The Passion of the King',
     books: 'Matthew',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'Who did Jesus say He was when He asked "Who do you say I am?" (Matthew 16)?',
@@ -1046,7 +1046,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 36,
   weekTitle: 'Mark — The Servant Who Acts',
     books: 'Mark',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'Mark is the shortest Gospel. What is its most distinctive feature in narration?',
@@ -1075,7 +1075,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 37,
   weekTitle: 'Luke 1–13 — The Son of Man',
     books: 'Luke',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'Luke was written by whom and addressed to whom?',
@@ -1104,7 +1104,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 38,
   weekTitle: 'Luke 14–24 — The Cross & Resurrection',
     books: 'Luke',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'Which three parables in Luke 15 all share the theme of something lost being found?',
@@ -1133,7 +1133,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 39,
   weekTitle: 'John 1–11 — The Word Made Flesh',
     books: 'John',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'John 3:16 — what does God give so that "whoever believes shall not perish but have eternal life"?',
@@ -1162,7 +1162,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 40,
   weekTitle: 'John 12–21 & Acts 1–7 — The Upper Room & the Early Church',
     books: 'John / Acts',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'In John 14:6, Jesus makes which "I AM" statement?',
@@ -1191,7 +1191,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 41,
   weekTitle: 'Acts 8–28 — The Gospel Goes to the Ends of the Earth',
     books: 'Acts',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'Saul\'s dramatic conversion happened on the road to which city?',
@@ -1220,7 +1220,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 42,
   weekTitle: 'Romans — The Gospel Explained',
     books: 'Romans',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'Romans 1:16 — Paul says he is not ashamed of the gospel because it is what?',
@@ -1249,7 +1249,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 43,
   weekTitle: '1 & 2 Corinthians — Love & the Church',
     books: '1 Corinthians / 2 Corinthians',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'The "Love Chapter" is 1 Corinthians 13. What does Paul say love NEVER does?',
@@ -1278,7 +1278,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 44,
   weekTitle: 'Galatians, Ephesians, Philippians & Colossians',
     books: 'Galatians / Ephesians / Philippians / Colossians',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'Galatians 2:20 — Paul declares "I have been crucified with Christ." Who now lives in him?',
@@ -1307,7 +1307,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 45,
   weekTitle: 'The Pastoral Letters — 1 & 2 Thessalonians, 1 & 2 Timothy, Titus, Philemon',
     books: '1 Thess / 2 Thess / 1 Tim / 2 Tim / Titus / Philemon',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: '1 Thessalonians 5:17 gives one of the shortest commands in the Bible. What is it?',
@@ -1336,7 +1336,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 46,
   weekTitle: 'Hebrews — Jesus Is Greater',
     books: 'Hebrews',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'Hebrews 11 is the great "Faith Chapter." How does it define faith?',
@@ -1365,7 +1365,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 47,
   weekTitle: 'James & 1 Peter — Faith That Works & Hope Under Trial',
     books: 'James / 1 Peter',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'James 2:17 says that "faith without" what "is dead"?',
@@ -1394,7 +1394,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 48,
   weekTitle: '2 Peter, 1-3 John & Jude — Truth, Love & Contending for the Faith',
     books: '2 Peter / 1 John / 2 John / 3 John / Jude',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: '1 John 1:9 — if we confess our sins, God is faithful and just to do what?',
@@ -1423,7 +1423,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 49,
   weekTitle: 'Revelation 1–11 — The Risen Christ & the Seven Seals',
     books: 'Revelation',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'Revelation 1:8 — Jesus declares He is the "Alpha and Omega," meaning what?',
@@ -1452,7 +1452,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 50,
   weekTitle: 'Revelation 12–22 — Victory, New Creation & the Reign of God',
     books: 'Revelation',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'Revelation 19 describes the Marriage Supper of the Lamb. Who is the Bride?',
@@ -1481,7 +1481,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 51,
   weekTitle: 'Old Testament Recap — From Creation to Exile',
     books: 'Old Testament Review',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'Which Old Testament figure is described as "a man after God\'s own heart"?',
@@ -1510,7 +1510,7 @@ export const questContentSeed: Omit<QuestContent, 'createdAt'>[] = [
     weekNumber: 52,
   weekTitle: 'New Testament Recap — The Gospel & the Life of Faith',
     books: 'New Testament Review',
-    videoLinks: [''],
+    videoLinks: ['https://youtu.be/evbHWPSjeeo'],
     quizQuestions: [
       {
         question: 'The four Gospels are written by whom?',

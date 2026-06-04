@@ -1,6 +1,6 @@
 import { getFirestore } from 'firebase-admin/firestore';
 import { sendWhatsAppMessage } from '../services/twilioService';
-import { getPrayerCard, getNeedPrayerCard } from '../services/prayerCardService';
+import { getJourneyPrayerContent, getNeedPrayerCard } from '../services/prayerCardService';
 import { getActiveNeedTheme } from '../services/needSessionService';
 import type { User } from '../types/schemas';
 import pino from 'pino';
@@ -21,25 +21,24 @@ export const handleKnock = async (phone: string, user: Partial<User> | null) => 
   // 1. Determine what declaration text the user is declaring
   let declarationText = '';
   let mediaUrls: string[] = [];
-  
-  // Try fetching the primary journey declaration
-  const card = await getPrayerCard(user.journeyStage ?? 1, user.journeyDayIndex ?? 1);
-  if (card && card.declarationText) {
-    declarationText += card.declarationText + '\n';
-    if (card.declarationAudioUrl && !card.declarationAudioUrl.includes('example.com')) {
-      mediaUrls.push(card.declarationAudioUrl);
-    }
-  }
 
-  // Try fetching the NEED session declaration (if active)
   const activeThemeId = await getActiveNeedTheme(phone);
   if (activeThemeId) {
-    const idx = Math.max(0, (user.needPrayerIndex ?? 1) - 1);
+    const idx = Math.max(1, user.needPrayerIndex ?? 0);
     const needCard = await getNeedPrayerCard(activeThemeId, idx);
     if (needCard && needCard.declarationText) {
-      declarationText += '\n' + needCard.declarationText;
+      declarationText = needCard.declarationText;
       if (needCard.declarationAudioUrl && !needCard.declarationAudioUrl.includes('example.com')) {
         mediaUrls.push(needCard.declarationAudioUrl);
+      }
+    }
+  } else {
+    const content = await getJourneyPrayerContent(user.journeyStage ?? 1, user.journeyDayIndex ?? 1);
+    if (content?.prayer.declarationText) {
+      declarationText = content.prayer.declarationText;
+      const audioUrl = content.prayer.declarationAudioUrl;
+      if (audioUrl && !audioUrl.includes('example.com')) {
+        mediaUrls.push(audioUrl);
       }
     }
   }

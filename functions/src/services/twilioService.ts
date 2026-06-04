@@ -24,7 +24,7 @@ const typingContext = new AsyncLocalStorage<TwilioTypingContext>();
 const getTwilioClient = () => {
   if (!twilioClient) {
     const accountSid = process.env.TWILIO_ACCOUNT_SID;
-    const authToken  = process.env.TWILIO_AUTH_TOKEN;
+    const authToken = process.env.TWILIO_AUTH_TOKEN;
     if (!accountSid || !authToken) {
       throw new Error('TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN must be set');
     }
@@ -38,12 +38,7 @@ const isMock = () => {
   return !sid || sid === 'your_account_sid' || sid === 'mock';
 };
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
-const getResponseDelayMs = (text = '') => {
-  const lengthDelay = Math.floor(text.length / 80) * 300;
-  return Math.min(3000, Math.max(1500, 1500 + lengthDelay));
-};
+// Typing delay has been removed to improve bot performance.
 
 export const detectTwilioChannel = (payload: Record<string, unknown>): TwilioInboundChannel => {
   const from = String(payload.From || payload.Author || '').toLowerCase();
@@ -123,7 +118,6 @@ const withTypingIndicator = async <T>(
       } else {
         await emitTypingWebhook(context, 'typing_started');
       }
-      await sleep(getResponseDelayMs(responseText));
       return await send();
     } finally {
       if (!context.typing) {
@@ -132,7 +126,6 @@ const withTypingIndicator = async <T>(
     }
   }
 
-  await sleep(getResponseDelayMs(responseText));
   return send();
 };
 
@@ -151,7 +144,7 @@ export const sendWhatsAppMessage = async (to: string, body: string, mediaUrl?: s
     }
 
     const client = getTwilioClient();
-    const from      = `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`;
+    const from = `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`;
     const toAddress = `whatsapp:${to}`;
 
     const messageParams: any = { body, from, to: toAddress };
@@ -187,11 +180,11 @@ export interface QuizButtonPayload {
  * twilio/quick-reply content template SID (HXxxx…).
  *
  * Template variables:
- *   {{1}} — header line (e.g. "Week 3 Quiz — Exodus | Question 2 of 4")
- *   {{2}} — question text
- *   {{3}} — option A text
- *   {{4}} — option B text
- *   {{5}} — option C text
+ *   {{1}} — header line (e.g. "Exodus — Question 2 of 4")
+ *   {{2}} — visible question body with A/B/C option text
+ *   {{3}} — option A button label
+ *   {{4}} — option B button label
+ *   {{5}} — option C button label
  *
  * Falls back to plain text if the content SID is not configured.
  */
@@ -218,17 +211,23 @@ export const sendQuizQuestion = async (
   // ── Interactive quick-reply via Content API ───────────────────────────────
   try {
     const client = getTwilioClient();
-    const from      = `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`;
+    const from = `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`;
     const toAddress = `whatsapp:${to}`;
 
     const header = `${payload.bookTitle} — Question ${payload.questionNumber} of ${payload.totalQuestions}`;
 
+    const visibleQuestionBody =
+      `${payload.questionText}\n\n` +
+      `A — ${payload.options[0]}\n` +
+      `B — ${payload.options[1]}\n` +
+      `C — ${payload.options[2]}`;
+
     const contentVariables = {
       '1': header,
-      '2': payload.questionText,
-      '3': `A — ${payload.options[0]}`,
-      '4': `B — ${payload.options[1]}`,
-      '5': `C — ${payload.options[2]}`,
+      '2': visibleQuestionBody,
+      '3': 'A',
+      '4': 'B',
+      '5': 'C',
     };
 
     const message = await withTypingIndicator(() => client.messages.create({
@@ -252,5 +251,48 @@ export const sendQuizQuestion = async (
       `C — ${options[2]}\n\n` +
       `_Reply A, B or C_`;
     return sendWhatsAppMessage(to, fallback);
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Quiz response content template (feedback/results)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Sends quiz feedback/result copy through a Twilio text content template.
+ *
+ * Requires TWILIO_CONTENT_SID_QUIZ_RESPONSE to be set to a pre-created
+ * twilio/text content template SID (HXxxx…).
+ *
+ * Template variables:
+ *   {{1}} — full response body
+ *
+ * Falls back to plain text if the content SID is not configured.
+ */
+export const sendQuizResponse = async (to: string, body: string): Promise<string> => {
+  const contentSid = process.env.TWILIO_CONTENT_SID_QUIZ_RESPONSE;
+
+  if (isMock() || !contentSid) {
+    logger.info({ to }, '[MOCK/FALLBACK] sendQuizResponse — no contentSid, using text');
+    return sendWhatsAppMessage(to, body);
+  }
+
+  try {
+    const client = getTwilioClient();
+    const from = `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`;
+    const toAddress = `whatsapp:${to}`;
+
+    const message = await withTypingIndicator(() => client.messages.create({
+      from,
+      to: toAddress,
+      contentSid,
+      contentVariables: JSON.stringify({ '1': body }),
+    } as any), body);
+
+    logger.info({ messageSid: message.sid, to }, 'Quiz response sent (content template)');
+    return message.sid;
+  } catch (error) {
+    logger.error({ error, to }, 'Failed to send quiz response template — falling back to text');
+    return sendWhatsAppMessage(to, body);
   }
 };

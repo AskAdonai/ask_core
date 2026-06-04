@@ -8,7 +8,46 @@ import pino from 'pino';
 const logger = pino();
 
 // Fallback image URL for the categories list if none provided
-const NEED_MENU_IMAGE_URL = 'https://example.com/need-menu.png';
+
+const normalizeNeedText = (value: string): string =>
+  value.toLowerCase().replace(/[^\w\s]|_/g, '').replace(/\s+/g, ' ').trim();
+
+const themeMatchValues = (theme: PrayerTheme): string[] => [
+  theme.displayName,
+  theme.category,
+  theme.themeId,
+].map(normalizeNeedText).filter(Boolean);
+
+export const findNeedThemeMatch = (
+  themes: PrayerTheme[],
+  rawText: string
+): PrayerTheme | null => {
+  const normalizedText = normalizeNeedText(rawText);
+  if (!normalizedText) return null;
+
+  if (/^\d+$/.test(normalizedText)) {
+    const num = parseInt(normalizedText, 10);
+    return themes.find(t => t.menuOrder === num) || null;
+  }
+
+  // Avoid one-letter accidental matches like "T" selecting the first theme
+  // that happens to contain the letter.
+  if (normalizedText.length < 2) return null;
+
+  return themes.find(theme => {
+    const values = themeMatchValues(theme);
+
+    if (values.includes(normalizedText)) {
+      return true;
+    }
+
+    return values.some(value =>
+      value
+        .split(/\s+/)
+        .some(word => word.length >= 2 && word.startsWith(normalizedText))
+    );
+  }) || null;
+};
 
 /**
  * Triggers the NEED selection flow.
@@ -24,7 +63,16 @@ export const triggerNeedSelection = async (phone: string, user: Partial<User> | 
     awaitingNeedSelection: true,
   });
 
-  const msg = `What does your heart need today?\n\nReply with a number or theme name to receive targeted prayers and declarations:\n\n1. Healing\n2. Warfare\n10. Finances\n14. Anxiety and Fear\n15. Waiting Seasons`;
+  const themesSnap = await db.collection('prayerThemes').get();
+  const themes = themesSnap.docs
+    .map(d => d.data() as PrayerTheme)
+    .filter(t => t.available)
+    .sort((a, b) => a.menuOrder - b.menuOrder);
+  const menu = themes
+    .map(theme => `${theme.menuOrder}. ${theme.displayName}`)
+    .join('\n');
+
+  const msg = `What does your heart need today?\n\nReply with a number or theme name to receive targeted prayers and declarations:\n\n${menu}`;
 
   // We send the message
   await sendWhatsAppMessage(phone, msg);
@@ -38,28 +86,12 @@ export const handleNeedSelection = async (phone: string, text: string, user: Par
   if (!user) return;
 
   const db = getFirestore();
-  const normalizedText = text.toLowerCase().trim();
 
   // Fetch all themes to match against
   const themesSnap = await db.collection('prayerThemes').get();
   const themes = themesSnap.docs.map(d => d.data() as PrayerTheme);
 
-  // Try to match by number first, then by name (fuzzy/exact)
-  let selectedTheme: PrayerTheme | null = null;
-
-  // Is it a number?
-  const isNumber = /^\d+$/.test(normalizedText);
-  if (isNumber) {
-    const num = parseInt(normalizedText, 10);
-    selectedTheme = themes.find(t => t.number === num) || null;
-  } else {
-    // Try matching name
-    selectedTheme = themes.find(t =>
-      t.displayName.toLowerCase().includes(normalizedText) ||
-      t.category.toLowerCase().includes(normalizedText) ||
-      t.themeId.toLowerCase().includes(normalizedText)
-    ) || null;
-  }
+  const selectedTheme = findNeedThemeMatch(themes, text);
 
   // If no theme matched
   if (!selectedTheme) {
@@ -72,7 +104,12 @@ export const handleNeedSelection = async (phone: string, text: string, user: Par
     await sendWhatsAppMessage(
       phone,
       `The "${selectedTheme.displayName}" theme is coming soon! Currently available themes are:\n` +
-      `1. Healing\n2. Warfare\n10. Finances\n14. Anxiety and Fear\n15. Waiting Seasons.\n\n` +
+      themes
+        .filter(theme => theme.available)
+        .sort((a, b) => a.menuOrder - b.menuOrder)
+        .map(theme => `${theme.menuOrder}. ${theme.displayName}`)
+        .join('\n') +
+      `\n\n` +
       `Please reply with an available number.`
     );
     return; // Do not clear the state, let them try again

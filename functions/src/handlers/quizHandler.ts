@@ -2,6 +2,7 @@ import { getFirestore } from 'firebase-admin/firestore';
 import {
   sendWhatsAppMessage,
   sendQuizQuestion,
+  sendQuizResponse,
   type QuizButtonPayload,
 } from '../services/twilioService';
 import { getQuestProgress, recordQuizScore } from '../services/questProgressService';
@@ -219,7 +220,7 @@ export const handleQuizAnswer = async (
   // ── More questions ────────────────────────────────────────────────────────
   if (nextIndex < total) {
     // Send feedback as plain text, then immediately send next question as buttons
-    await sendWhatsAppMessage(phone, feedback);
+    await sendQuizResponse(phone, feedback);
     await sendQuestion(
       phone,
       session.questions[nextIndex],
@@ -236,7 +237,7 @@ export const handleQuizAnswer = async (
   const score = updated.score;
   const enc   = encouragement(score, total);
 
-  await sendWhatsAppMessage(
+  await sendQuizResponse(
     phone,
     `${feedback}\n\n🎉 *Quiz complete.*\n\nYou scored *${score} out of ${total}*.\n\n${enc}\n\nWeek ${session.week + 1} begins Monday. 📖`
   );

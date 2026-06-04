@@ -5,6 +5,14 @@ import pino from 'pino';
 
 export type { PrayerCard };
 
+export interface ResolvedPrayerContent {
+  card?: PrayerCard;
+  prayer: ThemePrayer;
+  themeId: string;
+  prayerId?: string;
+  source: 'journey' | 'need';
+}
+
 const logger = pino();
 
 /**
@@ -56,7 +64,58 @@ export const getPrayerCardForDay = async (day: number): Promise<PrayerCard | nul
 };
 
 /**
- * Fetches a NEED prayer from prayerThemes/{themeId}/prayers sub-collection by index.
+ * Fetches a reusable prayer by document ID from a theme.
+ */
+export const getThemePrayer = async (
+  themeId: string,
+  prayerId: string
+): Promise<ThemePrayer | null> => {
+  const db = getFirestore();
+  const doc = await db
+    .collection('prayerThemes')
+    .doc(themeId)
+    .collection('prayers')
+    .doc(prayerId)
+    .get();
+
+  if (!doc.exists) {
+    logger.warn({ themeId, prayerId }, 'No theme prayer found by document ID');
+    return null;
+  }
+
+  return doc.data() as ThemePrayer;
+};
+
+/**
+ * Resolves a Journey card to the ThemePrayer it references.
+ */
+export const getJourneyPrayerContent = async (
+  stage: number,
+  day: number
+): Promise<ResolvedPrayerContent | null> => {
+  const card = await getPrayerCard(stage, day);
+  if (!card) return null;
+
+  const prayer = await getThemePrayer(card.themeId, card.prayerId);
+  if (!prayer) {
+    logger.warn(
+      { stage, day, themeId: card.themeId, prayerId: card.prayerId },
+      'Journey prayer card references missing theme prayer'
+    );
+    return null;
+  }
+
+  return {
+    card,
+    prayer,
+    themeId: card.themeId,
+    prayerId: card.prayerId,
+    source: 'journey',
+  };
+};
+
+/**
+ * Fetches a prayer from prayerThemes/{themeId}/prayers sub-collection by index.
  * Returns ThemePrayer or null if not found.
  */
 export const getNeedPrayerCard = async (
@@ -78,4 +137,23 @@ export const getNeedPrayerCard = async (
   }
 
   return snapshot.docs[0].data() as ThemePrayer;
+};
+
+/**
+ * Resolves NEED routing from the stored 0-based user position to the next
+ * 1-based ThemePrayer.index value.
+ */
+export const getNeedPrayerContent = async (
+  themeId: string,
+  needPrayerIndex: number
+): Promise<ResolvedPrayerContent | null> => {
+  const prayerIndex = Math.max(0, needPrayerIndex) + 1;
+  const prayer = await getNeedPrayerCard(themeId, prayerIndex);
+  if (!prayer) return null;
+
+  return {
+    prayer,
+    themeId,
+    source: 'need',
+  };
 };

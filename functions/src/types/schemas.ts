@@ -35,3 +35,6 @@ export type { JournalEntry }   from './JournalEntry';
 export type { DeclarationLog } from './DeclarationLog';
 export type { QuestLog }       from './QuestLog';
 export type { ThemePrayer }    from './ThemePrayer';
+
+// ── Enums ────────────────────────────────────────────────────────────────────
+export { JourneyStage, JOURNEY_STAGE_CONFIG } from './JourneyStage';

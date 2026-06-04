@@ -62,7 +62,7 @@ export const computeUserScheduleFields = (
 ) => {
   const phoneParsed = parsePhoneNumber(phone);
   const timezone = existingTimezone || (phoneParsed?.country && TIMEZONE_MAP[phoneParsed.country]) || 'UTC';
-  
+
   const reminderTimeUTC = new Date(
     new Date().setUTCHours(hour, minute, 0, 0)
   ).toISOString();

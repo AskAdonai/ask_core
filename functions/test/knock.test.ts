@@ -1,6 +1,6 @@
 const sendWhatsAppMessage = jest.fn();
 const update = jest.fn();
-const getPrayerCard = jest.fn();
+const getJourneyPrayerContent = jest.fn();
 const getNeedPrayerCard = jest.fn();
 const getActiveNeedTheme = jest.fn();
 const incrementStreak = jest.fn();
@@ -26,7 +26,7 @@ jest.mock('../src/services/twilioService', () => ({
 }));
 
 jest.mock('../src/services/prayerCardService', () => ({
-  getPrayerCard,
+  getJourneyPrayerContent,
   getNeedPrayerCard,
 }));
 
@@ -68,6 +68,7 @@ describe('KNOCK declaration flow', () => {
     jest.clearAllMocks();
     getActiveNeedTheme.mockResolvedValue(null);
     getNeedPrayerCard.mockResolvedValue(null);
+    getJourneyPrayerContent.mockResolvedValue(null);
     process.env.FIREBASE_PROJECT_ID = 'test-project';
   });
 
@@ -77,9 +78,11 @@ describe('KNOCK declaration flow', () => {
   });
 
   it('delivers the declaration, audio, and opens the YES loop', async () => {
-    getPrayerCard.mockResolvedValue({
-      declarationText: 'The Lord is my shepherd; I shall not want.',
-      declarationAudioUrl: 'https://cdn.example.test/declaration.mp3',
+    getJourneyPrayerContent.mockResolvedValue({
+      prayer: {
+        declarationText: 'The Lord is my shepherd; I shall not want.',
+        declarationAudioUrl: 'https://cdn.example.test/declaration.mp3',
+      },
     });
 
     await handleKnock(phone, user);

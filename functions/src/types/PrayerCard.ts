@@ -1,28 +1,27 @@
+import type { Timestamp } from 'firebase-admin/firestore';
+
 /**
  * prayerCards/{cardId}
  *
- * Journey devotion content. Indexed by journeyStage + dayIndex.
- * Fetched by SEEK and the morning send worker.
+ * Journey routing card. Indexed by journeyStage + dayIndex.
+ * Prayer content is resolved from prayerThemes/{themeId}/prayers/{prayerId}.
  *
  * cardId convention: "stage{n}-day{m}" e.g. "stage1-day3"
  */
 export interface PrayerCard {
-  journeyStage: number;          // 1-9  (Believe → Reign)
-  dayIndex: number;              // day within the stage (1-based)
+  journeyStage: import('./JourneyStage').JourneyStage; // Ties to User.journeyStage
+  dayIndex: number;              // Ties to User.journeyDayIndex within the stage (1-based)
 
-  // ── Content ──────────────────────────────────────────────────────────────
-  theme: string;                 // thematic label (e.g. "Trust", "Surrender")
   themeId: string;               // ID linking to a specific theme (e.g. "believe", "healing")
-  verse: string;                 // scripture text
-  reference: string;             // citation e.g. "John 15:5 (NIV)"
-  devotionText: string;          // full written devotion body
-  devotionLink: string;          // YouTube / audio link rendered in chat
-  reflectionQuestion: string;    // one question to sit with
+  prayerId: string;              // ID of the prayer inside prayerThemes/{themeId}/prayers
 
-  // ── KNOCK content ─────────────────────────────────────────────────────────
-  declarationText: string;       // spoken declaration shown on KNOCK
-  declarationAudioUrl: string;   // audio URL for the declaration (optional link)
+  imageUrl: string;              // image shown with the Journey prayer card
+  morningVoiceNoteUrl: string;   // optional morning ASK voice note link
+  devotionLink: string;          // YouTube / audio link rendered in chat
 
   // ── JOURNAL prompt ────────────────────────────────────────────────────────
   journalPrompt: string;         // prompt shown when user replies JOURNAL
+
+  createdAt?: Timestamp | Date;
+  updatedAt?: Timestamp | Date;
 }

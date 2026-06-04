@@ -1,6 +1,7 @@
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { sendWhatsAppMessage } from '../services/twilioService';
 import { incrementStreak } from '../services/streakService';
+import { JourneyStage, JOURNEY_STAGE_CONFIG } from '../types/JourneyStage';
 import type { User } from '../types/schemas';
 import pino from 'pino';
 
@@ -34,12 +35,33 @@ export const handleYesDeclaration = async (phone: string, keyword: string, user:
     } else {
       msg = `You have declared it 10 times. Well done. Your vine grows stronger today.`;
     }
-    
-    // Clear the awaiting state since they finished
-    await db.collection('users').doc(userId).update({
+    const updates: any = {
       awaitingDeclarationYes: false,
       updatedAt: new Date(),
-    });
+    };
+
+    if (currentCount - count < 10) {
+      const currentStage = user.journeyStage || JourneyStage.BELIEVE;
+      const config = JOURNEY_STAGE_CONFIG[currentStage as JourneyStage] || JOURNEY_STAGE_CONFIG[JourneyStage.BELIEVE];
+      const currentDay = user.journeyDayIndex || 1;
+
+      if (currentDay < config.requiredDays) {
+        updates.journeyDayIndex = FieldValue.increment(1);
+        logger.info({ userId, currentDay, requiredDays: config.requiredDays }, 'Advanced journeyDayIndex upon completing 10 declarations');
+      } else {
+        // Advance stage, reset day, UNLESS they are on the final stage
+        if (currentStage < JourneyStage.REIGN) {
+          updates.journeyStage = currentStage + 1;
+          updates.journeyDayIndex = 1;
+          logger.info({ userId, oldStage: currentStage, newStage: currentStage + 1 }, 'Advanced journeyStage upon completing required days');
+        } else {
+          logger.info({ userId, currentStage, currentDay }, 'journeyDayIndex maxed out on final stage. Keeping user at max.');
+        }
+      }
+    }
+
+    // Clear the awaiting state since they finished (and advance journey if applicable)
+    await db.collection('users').doc(userId).update(updates);
   }
 
   // If this was the first YES of the day and it hit a milestone, append celebration

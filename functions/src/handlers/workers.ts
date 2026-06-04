@@ -19,14 +19,21 @@ functions.cloudEvent('processSendWorker', async (cloudEvent: any) => {
     if (!userDoc.exists) return;
     const user = userDoc.data()!;
 
-    // Fetch card by journey stage + day index
-    const { getPrayerCard } = await import('../services/prayerCardService');
-    const card = await getPrayerCard(user.journeyStage ?? 1, user.journeyDayIndex ?? 1);
-    const msgBody = card
-      ? `🌅 Good morning, ${user.name}!\n\n_${card.verse}_\n— ${card.reference}\n\n${card.devotionText}`
+    // Morning ASK always follows the Journey, even during an active NEED session.
+    const { getJourneyPrayerContent } = await import('../services/prayerCardService');
+    const content = await getJourneyPrayerContent(user.journeyStage ?? 1, user.journeyDayIndex ?? 1);
+    const card = content?.card;
+    let msgBody = content
+      ? `🌅 Good morning, ${user.name}!\n\n_${content.prayer.verse}_\n— ${content.prayer.reference}\n\n${content.prayer.prayerText}`
       : `Good morning! It's time for your daily devotional. Send *SEEK* to read today's word. 🙏`;
 
-    await sendWhatsAppMessage(user.phone, msgBody);
+    const mediaUrls: string[] = [];
+    if (content && card) {
+      if (card.imageUrl) mediaUrls.push(card.imageUrl);
+      if (card.morningVoiceNoteUrl) mediaUrls.push(card.morningVoiceNoteUrl);
+    }
+
+    await sendWhatsAppMessage(user.phone, msgBody, mediaUrls.length > 0 ? mediaUrls : undefined);
 
     // ── Quest Scheduled Delivery ──────────────────────────────────────────────
     if (user.questActive) {
@@ -51,7 +58,7 @@ functions.cloudEvent('processSendWorker', async (cloudEvent: any) => {
               const bookTitle = content.books || content.weekTitle;
               const qMsg = `📺 *Your Quest Video: Week ${user.questWeek} — ${bookTitle}*\n\nHere is your scheduled reading video for today.`;
               await sendWhatsAppMessage(user.phone, qMsg, [videoUrl]);
-              
+
               await db.collection('users').doc(userId).update({
                 questVideoIndex: targetVideoIndex + 1,
                 updatedAt: new Date()

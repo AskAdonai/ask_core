@@ -49,6 +49,14 @@
       ]
     },
     {
+      "collectionGroup": "prayerThemes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "available", "order": "ASCENDING" },
+        { "fieldPath": "menuOrder", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "deliveryLogs",
       "queryScope": "COLLECTION",
       "fields": [

@@ -7,6 +7,7 @@ RUNTIME="nodejs22"
 # Resolve absolute path to the functions directory
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 FUNCTIONS_DIR="$SCRIPT_DIR/functions"
+TWILIO_SECRET_FLAGS="TWILIO_ACCOUNT_SID=TWILIO_ACCOUNT_SID:latest,TWILIO_AUTH_TOKEN=TWILIO_AUTH_TOKEN:latest,TWILIO_WHATSAPP_NUMBER=TWILIO_WHATSAPP_NUMBER:latest,TWILIO_CONTENT_SID_QUIZ=TWILIO_CONTENT_SID_QUIZ:latest,TWILIO_CONTENT_SID_QUIZ_RESPONSE=TWILIO_CONTENT_SID_QUIZ_RESPONSE:latest"
 
 echo "Setting active project to $PROJECT_ID..."
 gcloud config set project $PROJECT_ID
@@ -32,6 +33,10 @@ cd "$SCRIPT_DIR"
 # echo -n "mock" | gcloud secrets versions add TWILIO_AUTH_TOKEN --data-file=- || true
 # gcloud secrets create TWILIO_WHATSAPP_NUMBER --replication-policy="automatic" || true
 # echo -n "mock" | gcloud secrets versions add TWILIO_WHATSAPP_NUMBER --data-file=- || true
+# gcloud secrets create TWILIO_CONTENT_SID_QUIZ --replication-policy="automatic" || true
+# echo -n "HXxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" | gcloud secrets versions add TWILIO_CONTENT_SID_QUIZ --data-file=- || true
+# gcloud secrets create TWILIO_CONTENT_SID_QUIZ_RESPONSE --replication-policy="automatic" || true
+# echo -n "HXxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" | gcloud secrets versions add TWILIO_CONTENT_SID_QUIZ_RESPONSE --data-file=- || true
 
 echo "Granting Secret Manager access to Cloud Functions service account..."
 gcloud projects add-iam-policy-binding $PROJECT_ID \
@@ -66,20 +71,22 @@ gcloud functions deploy whatsappWebhook \
     --source="$FUNCTIONS_DIR" --entry-point=whatsappWebhook \
     --trigger-http --allow-unauthenticated \
     --set-env-vars=PUBSUB_TOPIC_MORNING_SEND=morning-send-topic,PUBSUB_TOPIC_REMINDER_SEND=reminder-send-topic,GOOGLE_CLOUD_PROJECT=$PROJECT_ID \
-    --set-secrets=TWILIO_ACCOUNT_SID=TWILIO_ACCOUNT_SID:latest,TWILIO_AUTH_TOKEN=TWILIO_AUTH_TOKEN:latest,TWILIO_WHATSAPP_NUMBER=TWILIO_WHATSAPP_NUMBER:latest
+    --set-secrets=$TWILIO_SECRET_FLAGS
 
 echo "Deploying Workers..."
 gcloud functions deploy processSendWorker \
     --gen2 --region=$REGION --runtime=$RUNTIME \
     --source="$FUNCTIONS_DIR" --entry-point=processSendWorker \
     --trigger-topic=morning-send-topic \
-    --set-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID
+    --set-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID \
+    --set-secrets=$TWILIO_SECRET_FLAGS
 
 gcloud functions deploy processReminderWorker \
     --gen2 --region=$REGION --runtime=$RUNTIME \
     --source="$FUNCTIONS_DIR" --entry-point=processReminderWorker \
     --trigger-topic=reminder-send-topic \
-    --set-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID
+    --set-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID \
+    --set-secrets=$TWILIO_SECRET_FLAGS
 
 echo "Deploying Dispatchers..."
 gcloud functions deploy processMorningDispatch \
@@ -134,4 +141,3 @@ echo "✅ Deployment complete!"
 echo ""
 echo "Webhook URL (paste into Twilio):"
 echo "  https://us-central1-$PROJECT_ID.cloudfunctions.net/whatsappWebhook"
-
