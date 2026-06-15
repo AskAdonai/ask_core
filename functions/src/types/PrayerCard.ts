@@ -1,4 +1,5 @@
 import type { Timestamp } from 'firebase-admin/firestore';
+import { JourneyStage } from './JourneyStage';
 
 /**
  * prayerCards/{cardId}
@@ -9,7 +10,8 @@ import type { Timestamp } from 'firebase-admin/firestore';
  * cardId convention: "stage{n}-day{m}" e.g. "stage1-day3"
  */
 export interface PrayerCard {
-  journeyStage: import('./JourneyStage').JourneyStage; // Ties to User.journeyStage
+  // ── Journey Mapping ─────────────────────────────────────────────────────────
+  journeyStage: JourneyStage; // Ties to User.journeyStage
   dayIndex: number;              // Ties to User.journeyDayIndex within the stage (1-based)
 
   themeId: string;               // ID linking to a specific theme (e.g. "believe", "healing")

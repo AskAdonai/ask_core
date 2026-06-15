@@ -1,4 +1,4 @@
-
+import { JourneyStage } from './JourneyStage';
 
 /**
  * users/{phoneNumber}
@@ -26,10 +26,11 @@ export interface User {
   // Kept for the dispatcher range-query fallback and reconcileStuckJobs.
   nextSendAt: Date;         // next morning card delivery timestamp
   nextReminderAt: Date;     // next evening nudge timestamp
+  nextQuestAt: Date;        // next Quest delivery timestamp (5 PM local)
   lockedUntil: Date | null; // execution lease — null when not being processed
 
   // ── Journey Progress ───────────────────────────────────────────────────────
-  journeyStage: import('./JourneyStage').JourneyStage; // 1-9  (Believe → Reign)
+  journeyStage: JourneyStage; // 1-9  (Believe → Reign)
   journeyDayIndex: number;       // day within current stage (1-based)
   vineStage: 'Grafted' | 'Rooted' | 'Growing' | 'Blooming' | 'Fruitful';
   streak: number;                // consecutive daily engagement days
@@ -45,7 +46,7 @@ export interface User {
   paused: boolean;
   awaitingJournal: boolean;
   awaitingNeedSelection: boolean;
-  awaitingOnboardingStep: 'name' | 'time' | null;
+  awaitingOnboardingStep: 'name' | 'timezone' | 'time' | null;
   awaitingQuestConfirm: boolean;
   awaitingQuizAnswer: boolean;
   awaitingDeclarationYes: boolean;
@@ -67,8 +68,30 @@ export interface User {
   currentQuizQuestionIndex: number;  // 0-based position in quizQuestions array
   currentQuizScore: number;          // correct answers so far
 
+  // ── Pub/Sub Idempotency ────────────────────────────────────────────────────
+  // Each dispatcher embeds a UUID delivery token in the Pub/Sub payload.
+  // Workers reject (ack without processing) any message whose token matches
+  // the one already stored here, preventing double-sends on Pub/Sub retries.
+  lastMorningDeliveryId: string | null;    // UUID of the last processed morning send
+  lastReminderDeliveryId: string | null;   // UUID of the last processed reminder send
+  lastQuestDeliveryId: string | null;      // UUID of the last processed quest send
+
   // ── Metadata ───────────────────────────────────────────────────────────────
   joinedAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/**
+ * Minimal user document created while onboarding is still in progress.
+ * The full User shape is only guaranteed after the time step finalises.
+ */
+export interface PendingUser {
+  userId?: string;
+  phone: string;
+  name?: string;
+  timezone?: string;
+  awaitingOnboardingStep: 'name' | 'timezone' | 'time';
   createdAt: Date;
   updatedAt: Date;
 }

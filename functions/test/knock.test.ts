@@ -12,7 +12,10 @@ const setAwaitingJournal = jest.fn();
 jest.mock('firebase-admin/firestore', () => ({
   getFirestore: jest.fn(() => ({
     collection: jest.fn(() => ({
-      doc: jest.fn(() => ({ update })),
+      doc: jest.fn(() => ({ 
+        update,
+        get: jest.fn(() => Promise.resolve({ exists: false, data: () => ({}) }))
+      })),
     })),
   })),
   FieldValue: {
@@ -48,9 +51,9 @@ jest.mock('../src/services/journalService', () => ({
   setAwaitingJournal,
 }));
 
-import { handleKnock } from '../src/handlers/knockHandler';
-import { handleYesDeclaration } from '../src/handlers/yesHandler';
-import { handleWebhookRequest } from '../src/handlers/webhook';
+import { handleKnock } from '../src/webhook/handlers/knockHandler';
+import { handleYesDeclaration } from '../src/webhook/handlers/yesHandler';
+import { handleWebhookRequest } from '../src/webhook/webhook';
 import type { User } from '../src/types/schemas';
 
 describe('KNOCK declaration flow', () => {
@@ -92,50 +95,30 @@ describe('KNOCK declaration flow', () => {
       expect.stringContaining("Today's declaration:\n\nThe Lord is my shepherd; I shall not want."),
       ['https://cdn.example.test/declaration.mp3'],
     );
-    expect(sendWhatsAppMessage.mock.calls[0][1]).toContain('Speak it 10 times');
+    expect(sendWhatsAppMessage.mock.calls[0][1]).toContain('Speak it aloud');
     expect(sendWhatsAppMessage.mock.calls[0][1]).toContain('*YES* — I declare it');
     expect(update).toHaveBeenCalledWith(expect.objectContaining({
       awaitingDeclarationYes: true,
     }));
   });
 
-  it('records a single YES and keeps prompting until 10 declarations', async () => {
+  it('records a YES and completes the daily declaration', async () => {
     incrementStreak.mockResolvedValue({
       incremented: true,
       streak: 1,
       vineStage: 'Grafted',
-      declarationsToday: 1,
+      alreadyDeclaredToday: false,
     });
 
     await handleYesDeclaration(phone, 'yes', user);
 
-    expect(incrementStreak).toHaveBeenCalledWith(phone, 'Africa/Lagos', 1);
+    expect(incrementStreak).toHaveBeenCalledWith(phone, 'Africa/Lagos');
     expect(sendWhatsAppMessage).toHaveBeenCalledWith(
       phone,
-      expect.stringContaining('1 of 10. Keep going.'),
+      expect.stringContaining('Declaration received. Well done, Friend. Your vine grows stronger today. 🌿'),
     );
     expect(update).not.toHaveBeenCalledWith(expect.objectContaining({
-      awaitingDeclarationYes: false,
-    }));
-  });
-
-  it('accepts YES x10 and completes the declaration streak marker', async () => {
-    incrementStreak.mockResolvedValue({
-      incremented: true,
-      streak: 1,
-      vineStage: 'Grafted',
-      declarationsToday: 10,
-    });
-
-    await handleYesDeclaration(phone, 'yes x10', user);
-
-    expect(incrementStreak).toHaveBeenCalledWith(phone, 'Africa/Lagos', 10);
-    expect(sendWhatsAppMessage).toHaveBeenCalledWith(
-      phone,
-      '10 declarations received. Well done. Your vine grows stronger today.',
-    );
-    expect(update).toHaveBeenCalledWith(expect.objectContaining({
-      awaitingDeclarationYes: false,
+      awaitingDeclarationYes: true,
     }));
   });
 
@@ -149,7 +132,7 @@ describe('KNOCK declaration flow', () => {
       incremented: true,
       streak: 1,
       vineStage: 'Grafted',
-      declarationsToday: 1,
+      alreadyDeclaredToday: false,
     });
 
     const status = jest.fn().mockReturnThis();
@@ -166,10 +149,10 @@ describe('KNOCK declaration flow', () => {
       { status, json } as any,
     );
 
-    expect(incrementStreak).toHaveBeenCalledWith(phone, 'Africa/Lagos', 1);
+    expect(incrementStreak).toHaveBeenCalledWith(phone, 'Africa/Lagos');
     expect(sendWhatsAppMessage).toHaveBeenCalledWith(
       phone,
-      expect.stringContaining('1 of 10. Keep going.'),
+      expect.stringContaining('Declaration received. Well done, Friend. Your vine grows stronger today. 🌿'),
     );
     expect(status).toHaveBeenCalledWith(200);
     expect(json).toHaveBeenCalledWith({ status: 'ok', action: 'declaration_yes' });

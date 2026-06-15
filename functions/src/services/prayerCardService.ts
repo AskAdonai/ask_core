@@ -1,6 +1,6 @@
 import { getFirestore } from 'firebase-admin/firestore';
 import type { PrayerCard } from '../types/PrayerCard';
-import type { ThemePrayer } from '../types/ThemePrayer';
+import type { ThemePrayer } from '../types/schemas';
 import pino from 'pino';
 
 export type { PrayerCard };

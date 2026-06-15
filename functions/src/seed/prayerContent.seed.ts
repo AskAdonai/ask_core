@@ -3,7 +3,7 @@ import * as dotenv from 'dotenv';
 import * as path from 'path';
 import type { PrayerCard } from '../types/PrayerCard';
 import type { PrayerTheme } from '../types/PrayerTheme';
-import type { ThemePrayer } from '../types/ThemePrayer';
+import type { ThemePrayer } from '../types/schemas';
 
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 

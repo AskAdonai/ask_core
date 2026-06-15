@@ -31,26 +31,26 @@ export const computeNextReminderAt = (timezone: string): Date => {
   return computeNextSendAt(timezone, 20, 0);
 };
 
+/**
+ * Computes the next Quest timestamp (UTC) for a given timezone.
+ * Quest delivery is strictly at 5:00 PM (17:00) local time.
+ */
+export const computeNextQuestAt = (timezone: string): Date => {
+  return computeNextSendAt(timezone, 17, 0);
+};
+
+import { getCountry } from 'countries-and-timezones';
 import { parsePhoneNumber } from 'libphonenumber-js';
 
-export const TIMEZONE_MAP: Record<string, string> = {
-  NG: 'Africa/Lagos',
-  GH: 'Africa/Accra',
-  KE: 'Africa/Nairobi',
-  ZA: 'Africa/Johannesburg',
-  ET: 'Africa/Addis_Ababa',
-  TZ: 'Africa/Dar_es_Salaam',
-  UG: 'Africa/Kampala',
-  US: 'America/New_York',
-  CA: 'America/Toronto',
-  BR: 'America/Sao_Paulo',
-  GB: 'Europe/London',
-  DE: 'Europe/Berlin',
-  FR: 'Europe/Paris',
-  IN: 'Asia/Kolkata',
-  PK: 'Asia/Karachi',
-  BD: 'Asia/Dhaka',
-  AU: 'Australia/Sydney',
+/**
+ * Returns the primary IANA timezone for a given country code, falling back to UTC.
+ */
+export const resolveCountryTimezone = (countryCode: string): string => {
+  const countryData = getCountry(countryCode);
+  if (countryData && countryData.timezones.length > 0) {
+    return countryData.timezones[0];
+  }
+  return 'UTC';
 };
 
 export const computeUserScheduleFields = (
@@ -61,11 +61,14 @@ export const computeUserScheduleFields = (
   existingTimezone?: string
 ) => {
   const phoneParsed = parsePhoneNumber(phone);
-  const timezone = existingTimezone || (phoneParsed?.country && TIMEZONE_MAP[phoneParsed.country]) || 'UTC';
+  const countryCode = phoneParsed?.country || '';
+  const timezone = existingTimezone || resolveCountryTimezone(countryCode);
 
-  const reminderTimeUTC = new Date(
-    new Date().setUTCHours(hour, minute, 0, 0)
-  ).toISOString();
+  const localDateTime = DateTime.fromObject(
+    { hour, minute },
+    { zone: timezone }
+  );
+  const reminderTimeUTC = localDateTime.toUTC().toFormat('HH:mm');
 
   return {
     reminderTime: displayTime,
@@ -76,5 +79,6 @@ export const computeUserScheduleFields = (
     reminderMinute: minute,
     nextSendAt: computeNextSendAt(timezone, hour, minute),
     nextReminderAt: computeNextReminderAt(timezone),
+    nextQuestAt: computeNextQuestAt(timezone),
   };
 };

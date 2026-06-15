@@ -12,9 +12,10 @@
  *   prayerCards/{cardId}                       → PrayerCard
  *   prayerThemes/{themeId}                     → PrayerTheme
  *   prayerThemes/{themeId}/prayers/{prayerId}  → ThemePrayer
- *   questContent/{weekNumber}                  → QuestContent, QuestQuestion
+ *   questContent/{weekNumber}                  → QuestContent
  *   milestones/{milestoneId}                   → Milestone
  *   deliveryLogs/{logId}                       → DeliveryLog
+ *   systemConfig/{configId}                    → SystemConfig
  *
  * Removed collections (state now inlined on User):
  *   userNeedSessions — merged into User.activeNeedTheme / User.needPrayerIndex
@@ -23,18 +24,20 @@
  */
 
 // ── Top-level collections ────────────────────────────────────────────────────
-export type { User }           from './User';
+export type { User, PendingUser } from './User';
 export type { PrayerCard }     from './PrayerCard';
-export type { PrayerTheme }    from './PrayerTheme';
-export type { QuestContent, QuestQuestion } from './QuestContent';
+export type { PrayerTheme, ThemePrayer, SystemConfig } from './PrayerTheme';
+export type { QuestContent, QuestLog } from './QuestContent';
 export type { Milestone }      from './Milestone';
 export type { DeliveryLog }    from './DeliveryLog';
 
 // ── Sub-collections ──────────────────────────────────────────────────────────
 export type { JournalEntry }   from './JournalEntry';
 export type { DeclarationLog } from './DeclarationLog';
-export type { QuestLog }       from './QuestLog';
-export type { ThemePrayer }    from './ThemePrayer';
+
+// ── Media & Daily Declarations ───────────────────────────────────────────────
+export type { Media, MediaCategory } from './Media';
+export type { DailyDeclaration } from './DailyDeclaration';
 
 // ── Enums ────────────────────────────────────────────────────────────────────
 export { JourneyStage, JOURNEY_STAGE_CONFIG } from './JourneyStage';

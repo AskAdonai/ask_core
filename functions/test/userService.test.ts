@@ -21,6 +21,7 @@ jest.mock('firebase-admin/firestore', () => ({
 jest.mock('../src/utils/timezone', () => ({
   computeNextSendAt: jest.fn(() => new Date('2026-06-03T08:00:00.000Z')),
   computeNextReminderAt: jest.fn(() => new Date('2026-06-02T20:00:00.000Z')),
+  resolveCountryTimezone: jest.fn(() => 'Africa/Lagos'),
 }));
 
 describe('userService', () => {
@@ -47,11 +48,40 @@ describe('userService', () => {
       expect(result.user.timezone).toBe('Africa/Lagos');
       expect(result.user.reminderTime).toBe('08:30');
       expect(result.user.reminderTimeUTC).toEqual(expect.any(String)); 
-      expect(mockSet).toHaveBeenCalledWith(expect.objectContaining({
-        name: 'New User',
-        phone: '+2348012345678',
-        timezone: 'Africa/Lagos',
-      }));
+      expect(mockSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'New User',
+          phone: '+2348012345678',
+          timezone: 'Africa/Lagos',
+        }),
+        { merge: true }
+      );
+    });
+
+    it('finalises an existing pending onboarding document', async () => {
+      mockGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          phone: '+15551234567',
+          name: 'Pending User',
+          timezone: 'America/Los_Angeles',
+          awaitingOnboardingStep: 'time',
+        }),
+      });
+
+      const result = await createUser('+15551234567', '', 6, 0, 'America/Los_Angeles');
+
+      expect(result.exists).toBe(false);
+      expect(result.user.name).toBe('Pending User');
+      expect(result.user.timezone).toBe('America/Los_Angeles');
+      expect(mockSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'Pending User',
+          timezone: 'America/Los_Angeles',
+          awaitingOnboardingStep: null,
+        }),
+        { merge: true }
+      );
     });
   });
 

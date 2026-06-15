@@ -1,5 +1,5 @@
 import { getFirestore } from 'firebase-admin/firestore';
-import { computeNextSendAt, computeNextReminderAt } from '../utils/timezone';
+import { computeNextSendAt, computeNextReminderAt, computeNextQuestAt } from '../utils/timezone';
 import pino from 'pino';
 
 const logger = pino();
@@ -18,6 +18,9 @@ export const rescheduleAfterSend = async (
 
   await db.collection('users').doc(userId).update({
     nextSendAt,
+    declarationsToday: 0,
+    journaledToday: false,
+    eveningReminderSentToday: false,
     lockedUntil: null,
     lastSentAt: new Date(),
     updatedAt: new Date(),
@@ -35,10 +38,26 @@ export const rescheduleAfterReminder = async (userId: string, timezone: string):
 
   await db.collection('users').doc(userId).update({
     nextReminderAt,
-    reminderSentToday: true,
+    eveningReminderSentToday: true,
     lockedUntil: null,
     updatedAt: new Date(),
   });
 
   logger.info({ userId, nextReminderAt }, 'Rescheduled reminder dispatch');
+};
+
+/**
+ * Reschedules the next quest timestamp after a successful quest dispatch.
+ */
+export const rescheduleAfterQuest = async (userId: string, timezone: string): Promise<void> => {
+  const db = getFirestore();
+  const nextQuestAt = computeNextQuestAt(timezone);
+
+  await db.collection('users').doc(userId).update({
+    nextQuestAt,
+    lockedUntil: null,
+    updatedAt: new Date(),
+  });
+
+  logger.info({ userId, nextQuestAt }, 'Rescheduled quest dispatch');
 };

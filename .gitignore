@@ -33,3 +33,5 @@ server.log
 functions/.env
 .text.txt
 gcp-key.json
+infra_.md
+logs.json

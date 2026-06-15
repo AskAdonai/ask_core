@@ -4,7 +4,9 @@ import { normalizeInput } from '../utils/normalizeInput';
 export const VALID_KEYWORDS = [
   'ask', 'seek', 'knock', 'journal', 'vine', 
   'need', 'remind', 'pause', 'resume', 'help', 
-  'quest', 'watch', 'log', 'quiz', 'progress'
+  'quest', 'watch', 'log', 'quiz', 'progress',
+  'testmonday', 'testtuesday', 'testwednesday',
+  'testthursday', 'testfriday', 'testsaturday'
 ];
 
 /** 

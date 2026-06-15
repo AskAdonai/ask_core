@@ -1,5 +1,5 @@
 import request from 'supertest';
-import { createApp } from '../src/handlers/webhook';
+import { createAdminApp } from '../src/admin/adminApp';
 import { getFirestore } from 'firebase-admin/firestore';
 
 jest.mock('firebase-admin/firestore', () => {
@@ -40,7 +40,7 @@ jest.mock('firebase-admin/auth', () => ({
 }));
 
 describe('Admin API Router', () => {
-  const app = createApp();
+  const app = createAdminApp();
   let dbMock: any;
 
   beforeEach(() => {

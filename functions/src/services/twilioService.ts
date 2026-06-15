@@ -296,3 +296,317 @@ export const sendQuizResponse = async (to: string, body: string): Promise<string
     return sendWhatsAppMessage(to, body);
   }
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Quest daily content templates (Mon / Tue / Wed / Fri / Sat)
+// Each day maps to one Twilio Content Template SID + named variables.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface QuestMondayPayload {
+  name: string;          // {{1}}
+  weekNumber: number;    // {{2}}  e.g. "Week 1 of the Bible in a Year Quest!"
+  mondayEncouragement: string; // {{3}}
+  readingPortion: string;      // {{4}}
+  videoLink: string;           // {{5}}
+}
+
+export interface QuestTuesdayPayload {
+  name: string;           // {{1}}
+  tuesdaySummary: string; // {{2}}
+  reflectionQuote: string;// {{3}}
+}
+
+export interface QuestWednesdayPayload {
+  name: string;             // {{1}}
+  weekNumber: number;       // {{2}}
+  readingPortion: string;   // {{3}}
+  wednesdaySummary: string; // {{4}}
+  videoLink: string;        // {{5}}
+  estimatedTime: string;    // {{6}}
+  signOff: string;          // {{7}}
+}
+
+export interface QuestFridayPayload {
+  name: string;              // {{1}}
+  fridayEncouragement: string; // {{2}}
+  weekNumber: number;        // {{3}}
+  readingPortion: string;    // {{4}}
+  videoLink: string;         // {{5}}
+  weeklySummary: string;     // {{6}}
+}
+
+export interface QuestSaturdayPayload {
+  name: string;                  // {{1}}
+  quizGreeting: string;          // {{2}}
+  weeklyChapterSpan: string;     // {{3}}
+  quizLinks: string;             // {{4}}
+  saturdayEncouragement: string; // {{5}}
+}
+
+/**
+ * Sends the Monday quest template.
+ *
+ * Template variables:
+ *   {{1}} Name
+ *   {{2}} Week number intro ("Week 1 of the Bible in a Year Quest!")
+ *   {{3}} MondayEncouragement
+ *   {{4}} ReadingPortion
+ *   {{5}} VideoLink
+ *
+ * Env var: TWILIO_CONTENT_SID_QUEST_MONDAY
+ */
+export const sendQuestMonday = async (to: string, payload: QuestMondayPayload): Promise<string> => {
+  const contentSid = process.env.TWILIO_CONTENT_SID_QUEST_MONDAY;
+
+  const fallback =
+    `Hello ${payload.name} 👋👋\n\n` +
+    `Welcome to Week ${payload.weekNumber} of the Bible in a Year Quest!\n` +
+    `${payload.mondayEncouragement}\n\n` +
+    `Today's video covers ${payload.readingPortion}.\n` +
+    `👉 Here is your link for today: ${payload.videoLink}\n\n` +
+    `Take your time to watch and follow along with the reading.\n` +
+    `I'll check in tomorrow before your next video.`;
+
+  if (isMock() || !contentSid) {
+    logger.info({ to }, '[MOCK/FALLBACK] sendQuestMonday — using text');
+    return sendWhatsAppMessage(to, fallback);
+  }
+
+  try {
+    const client = getTwilioClient();
+    const variables = {
+      'Name': payload.name,
+      'WeekNumber': String(payload.weekNumber),
+      'MondayEncouragement': payload.mondayEncouragement,
+      'ReadingPortion': payload.readingPortion,
+      'VideoLink': payload.videoLink,
+    };
+    const message = await withTypingIndicator(() => client.messages.create({
+      from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
+      to: `whatsapp:${to}`,
+      contentSid,
+      contentVariables: JSON.stringify(variables),
+    } as any), fallback);
+    logger.info({ messageSid: message.sid, to }, 'Quest Monday sent (content template)');
+    return message.sid;
+  } catch (error) {
+    logger.error({ error, to }, 'sendQuestMonday template failed — falling back to text');
+    return sendWhatsAppMessage(to, fallback);
+  }
+};
+
+/**
+ * Sends the Tuesday quest reflection template.
+ *
+ * Env var: TWILIO_CONTENT_SID_QUEST_TUESDAY
+ */
+export const sendQuestTuesday = async (to: string, payload: QuestTuesdayPayload): Promise<string> => {
+  const contentSid = process.env.TWILIO_CONTENT_SID_QUEST_TUESDAY;
+
+  const fallback =
+    `Hello ${payload.name} 👋\n\n` +
+    `${payload.tuesdaySummary}\n\n` +
+    `Reflect on this:\n"${payload.reflectionQuote}"\n\n` +
+    `I'll be back tomorrow with your next video.`;
+
+  if (isMock() || !contentSid) {
+    logger.info({ to }, '[MOCK/FALLBACK] sendQuestTuesday — using text');
+    return sendWhatsAppMessage(to, fallback);
+  }
+
+  try {
+    const client = getTwilioClient();
+    const variables = {
+      'Name': payload.name,
+      'TuesdaySummary': payload.tuesdaySummary,
+      'ReflectionQuote': payload.reflectionQuote,
+    };
+    const message = await withTypingIndicator(() => client.messages.create({
+      from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
+      to: `whatsapp:${to}`,
+      contentSid,
+      contentVariables: JSON.stringify(variables),
+    } as any), fallback);
+    logger.info({ messageSid: message.sid, to }, 'Quest Tuesday sent (content template)');
+    return message.sid;
+  } catch (error) {
+    logger.error({ error, to }, 'sendQuestTuesday template failed — falling back to text');
+    return sendWhatsAppMessage(to, fallback);
+  }
+};
+
+/**
+ * Sends the Wednesday quest video template.
+ *
+ * Env var: TWILIO_CONTENT_SID_QUEST_WEDNESDAY
+ */
+export const sendQuestWednesday = async (to: string, payload: QuestWednesdayPayload): Promise<string> => {
+  const contentSid = process.env.TWILIO_CONTENT_SID_QUEST_WEDNESDAY;
+
+  const fallback =
+    `Hello ${payload.name} 👋👋\n\n` +
+    `Here is your second video for Week ${payload.weekNumber}.\n` +
+    `Today's reading covers ${payload.readingPortion}.\n\n` +
+    `${payload.wednesdaySummary}\n\n` +
+    `👉 Watch here: ${payload.videoLink}\n\n` +
+    `Please set aside about ${payload.estimatedTime} for this session.\n` +
+    `${payload.signOff}`;
+
+  if (isMock() || !contentSid) {
+    logger.info({ to }, '[MOCK/FALLBACK] sendQuestWednesday — using text');
+    return sendWhatsAppMessage(to, fallback);
+  }
+
+  try {
+    const client = getTwilioClient();
+    const variables = {
+      'Name': payload.name,
+      'WeekNumber': String(payload.weekNumber),
+      'ReadingPortion': payload.readingPortion,
+      'WednesdaySummary': payload.wednesdaySummary,
+      'VideoLink': payload.videoLink,
+      'EstimatedTime': payload.estimatedTime,
+      'SignOff': payload.signOff,
+    };
+    const message = await withTypingIndicator(() => client.messages.create({
+      from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
+      to: `whatsapp:${to}`,
+      contentSid,
+      contentVariables: JSON.stringify(variables),
+    } as any), fallback);
+    logger.info({ messageSid: message.sid, to }, 'Quest Wednesday sent (content template)');
+    return message.sid;
+  } catch (error) {
+    logger.error({ error, to }, 'sendQuestWednesday template failed — falling back to text');
+    return sendWhatsAppMessage(to, fallback);
+  }
+};
+
+/**
+ * Sends the Friday final video template.
+ *
+ * Env var: TWILIO_CONTENT_SID_QUEST_FRIDAY
+ */
+export const sendQuestFriday = async (to: string, payload: QuestFridayPayload): Promise<string> => {
+  const contentSid = process.env.TWILIO_CONTENT_SID_QUEST_FRIDAY;
+
+  const fallback =
+    `Hello ${payload.name} 👋\n\n` +
+    `${payload.fridayEncouragement}\n\n` +
+    `Here is your final video for Week ${payload.weekNumber}.\n` +
+    `Today's reading covers ${payload.readingPortion}.\n` +
+    `👉 Watch here: ${payload.videoLink}\n\n` +
+    `${payload.weeklySummary}\n\n` +
+    `If you missed any part, take time to catch up before the quiz tomorrow.`;
+
+  if (isMock() || !contentSid) {
+    logger.info({ to }, '[MOCK/FALLBACK] sendQuestFriday — using text');
+    return sendWhatsAppMessage(to, fallback);
+  }
+
+  try {
+    const client = getTwilioClient();
+    const variables = {
+      'Name': payload.name,
+      'FridayEncouragement': payload.fridayEncouragement,
+      'WeekNumber': String(payload.weekNumber),
+      'ReadingPortion': payload.readingPortion,
+      'VideoLink': payload.videoLink,
+      'WeeklySummary': payload.weeklySummary,
+    };
+    const message = await withTypingIndicator(() => client.messages.create({
+      from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
+      to: `whatsapp:${to}`,
+      contentSid,
+      contentVariables: JSON.stringify(variables),
+    } as any), fallback);
+    logger.info({ messageSid: message.sid, to }, 'Quest Friday sent (content template)');
+    return message.sid;
+  } catch (error) {
+    logger.error({ error, to }, 'sendQuestFriday template failed — falling back to text');
+    return sendWhatsAppMessage(to, fallback);
+  }
+};
+
+/**
+ * Sends the Saturday quiz template.
+ *
+ * Env var: TWILIO_CONTENT_SID_QUEST_SATURDAY
+ */
+export const sendQuestSaturday = async (to: string, payload: QuestSaturdayPayload): Promise<string> => {
+  const contentSid = process.env.TWILIO_CONTENT_SID_QUEST_SATURDAY;
+
+  const fallback =
+    `Hello ${payload.name} 👋\n\n` +
+    `${payload.quizGreeting}\n` +
+    `This week you've read ${payload.weeklyChapterSpan}.\n` +
+    `Take a few minutes to reflect and test your understanding.\n\n` +
+    `Quiz link\n${payload.quizLinks}\n\n` +
+    `${payload.saturdayEncouragement}`;
+
+  if (isMock() || !contentSid) {
+    logger.info({ to }, '[MOCK/FALLBACK] sendQuestSaturday — using text');
+    return sendWhatsAppMessage(to, fallback);
+  }
+
+  try {
+    const client = getTwilioClient();
+    const variables = {
+      'Name': payload.name,
+      'QuizGreeting': payload.quizGreeting,
+      'WeeklyChapterSpan': payload.weeklyChapterSpan,
+      'QuizLinks': payload.quizLinks,
+      'SaturdayEncouragement': payload.saturdayEncouragement,
+    };
+    const message = await withTypingIndicator(() => client.messages.create({
+      from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
+      to: `whatsapp:${to}`,
+      contentSid,
+      contentVariables: JSON.stringify(variables),
+    } as any), fallback);
+    logger.info({ messageSid: message.sid, to }, 'Quest Saturday sent (content template)');
+    return message.sid;
+  } catch (error) {
+    logger.error({ error, to }, 'sendQuestSaturday template failed — falling back to text');
+    return sendWhatsAppMessage(to, fallback);
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Knock response content template
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const sendKnockResponse = async (to: string, declarationText: string, mediaUrls?: string[]): Promise<void> => {
+  const contentSid = process.env.TWILIO_CONTENT_SID_KNOCK_RESPONSE;
+  
+  const fallback = `Today's declaration:\n\n${declarationText}\n\nSpeak it aloud. When you have declared it, reply *YES*.\n\n• *YES* — I declare it\n• *JOURNAL* — reflect\n• *VINE* — my growth`;
+
+  // If there are media URLs, send them first via a standard message so they aren't lost
+  if (mediaUrls && mediaUrls.length > 0) {
+    await sendWhatsAppMessage(to, "Listen to today's declaration:", mediaUrls);
+  }
+
+  if (isMock() || !contentSid) {
+    logger.info({ to }, '[MOCK/FALLBACK] sendKnockResponse — no contentSid, using text');
+    await sendWhatsAppMessage(to, fallback);
+    return;
+  }
+
+  try {
+    const client = getTwilioClient();
+    const from = `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`;
+    const toAddress = `whatsapp:${to}`;
+
+    const message = await withTypingIndicator(() => client.messages.create({
+      from,
+      to: toAddress,
+      contentSid,
+      contentVariables: JSON.stringify({ '1': declarationText }),
+    } as any), fallback);
+
+    logger.info({ messageSid: message.sid, to }, 'Knock response sent (content template)');
+  } catch (error) {
+    logger.error({ error, to }, 'Failed to send knock response template — falling back to text');
+    await sendWhatsAppMessage(to, fallback);
+  }
+};

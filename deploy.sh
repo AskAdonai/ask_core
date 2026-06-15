@@ -7,7 +7,14 @@ RUNTIME="nodejs22"
 # Resolve absolute path to the functions directory
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 FUNCTIONS_DIR="$SCRIPT_DIR/functions"
-TWILIO_SECRET_FLAGS="TWILIO_ACCOUNT_SID=TWILIO_ACCOUNT_SID:latest,TWILIO_AUTH_TOKEN=TWILIO_AUTH_TOKEN:latest,TWILIO_WHATSAPP_NUMBER=TWILIO_WHATSAPP_NUMBER:latest,TWILIO_CONTENT_SID_QUIZ=TWILIO_CONTENT_SID_QUIZ:latest,TWILIO_CONTENT_SID_QUIZ_RESPONSE=TWILIO_CONTENT_SID_QUIZ_RESPONSE:latest"
+
+# Source environment variables from .env if it exists
+if [ -f "$FUNCTIONS_DIR/.env" ]; then
+  echo "Sourcing environment variables from $FUNCTIONS_DIR/.env..."
+  export $(grep -v '^#' "$FUNCTIONS_DIR/.env" | xargs)
+fi
+
+TWILIO_SECRET_FLAGS="TWILIO_ACCOUNT_SID=TWILIO_ACCOUNT_SID:latest,TWILIO_AUTH_TOKEN=TWILIO_AUTH_TOKEN:latest,TWILIO_WHATSAPP_NUMBER=TWILIO_WHATSAPP_NUMBER:latest,TWILIO_CONTENT_SID_QUIZ=TWILIO_CONTENT_SID_QUIZ:latest,TWILIO_CONTENT_SID_QUIZ_RESPONSE=TWILIO_CONTENT_SID_QUIZ_RESPONSE:latest,TWILIO_CONTENT_SID_KNOCK_RESPONSE=TWILIO_CONTENT_SID_KNOCK_RESPONSE:latest"
 
 echo "Setting active project to $PROJECT_ID..."
 gcloud config set project $PROJECT_ID
@@ -46,9 +53,8 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
 echo "Creating Pub/Sub topics..."
 gcloud pubsub topics create morning-send-topic || true
 gcloud pubsub topics create reminder-send-topic || true
-gcloud pubsub topics create morning-dispatch-trigger || true
-gcloud pubsub topics create reminder-dispatch-trigger || true
-gcloud pubsub topics create reconcile-trigger || true
+gcloud pubsub topics create quest-send-topic || true
+gcloud pubsub topics create minute-tick || true
 
 echo "Creating Firestore indexes..."
 gcloud firestore indexes composite create --database='(default)' \
@@ -65,13 +71,19 @@ gcloud firestore indexes composite create --database='(default)' \
   --collection-group=users --query-scope=COLLECTION \
   --field-config=field-path=lockedUntil,order=ascending 2>&1 || true
 
-echo "Deploying Webhook..."
+echo "Deploying Webhook and APIs..."
 gcloud functions deploy whatsappWebhook \
     --gen2 --region=$REGION --runtime=$RUNTIME \
     --source="$FUNCTIONS_DIR" --entry-point=whatsappWebhook \
     --trigger-http --allow-unauthenticated \
-    --set-env-vars=PUBSUB_TOPIC_MORNING_SEND=morning-send-topic,PUBSUB_TOPIC_REMINDER_SEND=reminder-send-topic,GOOGLE_CLOUD_PROJECT=$PROJECT_ID \
+    --set-env-vars=PUBSUB_TOPIC_MORNING_SEND=morning-send-topic,PUBSUB_TOPIC_REMINDER_SEND=reminder-send-topic,PUBSUB_TOPIC_QUEST_SEND=quest-send-topic,GOOGLE_CLOUD_PROJECT=$PROJECT_ID \
     --set-secrets=$TWILIO_SECRET_FLAGS
+
+gcloud functions deploy adminApi \
+    --gen2 --region=$REGION --runtime=$RUNTIME \
+    --source="$FUNCTIONS_DIR" --entry-point=adminApi \
+    --trigger-http --allow-unauthenticated \
+    --set-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID,ALLOWED_ADMIN_ORIGINS=$ALLOWED_ADMIN_ORIGINS
 
 echo "Deploying Workers..."
 gcloud functions deploy processSendWorker \
@@ -88,24 +100,19 @@ gcloud functions deploy processReminderWorker \
     --set-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID \
     --set-secrets=$TWILIO_SECRET_FLAGS
 
+gcloud functions deploy processQuestWorker \
+    --gen2 --region=$REGION --runtime=$RUNTIME \
+    --source="$FUNCTIONS_DIR" --entry-point=processQuestWorker \
+    --trigger-topic=quest-send-topic \
+    --set-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID \
+    --set-secrets=$TWILIO_SECRET_FLAGS
+
 echo "Deploying Dispatchers..."
-gcloud functions deploy processMorningDispatch \
+gcloud functions deploy minuteTick \
     --gen2 --region=$REGION --runtime=$RUNTIME \
-    --source="$FUNCTIONS_DIR" --entry-point=processMorningDispatch \
-    --trigger-topic=morning-dispatch-trigger \
-    --set-env-vars=PUBSUB_TOPIC_MORNING_SEND=morning-send-topic,GOOGLE_CLOUD_PROJECT=$PROJECT_ID
-
-gcloud functions deploy processReminderDispatch \
-    --gen2 --region=$REGION --runtime=$RUNTIME \
-    --source="$FUNCTIONS_DIR" --entry-point=processReminderDispatch \
-    --trigger-topic=reminder-dispatch-trigger \
-    --set-env-vars=PUBSUB_TOPIC_REMINDER_SEND=reminder-send-topic,GOOGLE_CLOUD_PROJECT=$PROJECT_ID
-
-gcloud functions deploy reconcileStuckJobs \
-    --gen2 --region=$REGION --runtime=$RUNTIME \
-    --source="$FUNCTIONS_DIR" --entry-point=reconcileStuckJobs \
-    --trigger-topic=reconcile-trigger \
-    --set-env-vars=GOOGLE_CLOUD_PROJECT=$PROJECT_ID
+    --source="$FUNCTIONS_DIR" --entry-point=minuteTick \
+    --trigger-topic=minute-tick \
+    --set-env-vars=PUBSUB_TOPIC_MORNING_SEND=morning-send-topic,PUBSUB_TOPIC_REMINDER_SEND=reminder-send-topic,PUBSUB_TOPIC_QUEST_SEND=quest-send-topic,GOOGLE_CLOUD_PROJECT=$PROJECT_ID
 
 echo "Creating/Updating Cloud Schedulers..."
 
@@ -132,9 +139,7 @@ upsert_scheduler() {
   fi
 }
 
-upsert_scheduler "processMorningDispatchJob"  '* * * * *'    "morning-dispatch-trigger"
-upsert_scheduler "processReminderDispatchJob" '* * * * *'    "reminder-dispatch-trigger"
-upsert_scheduler "reconcileStuckJobsJob"      '*/10 * * * *' "reconcile-trigger"
+upsert_scheduler "minuteTickJob"  '* * * * *'    "minute-tick"
 
 echo ""
 echo "✅ Deployment complete!"

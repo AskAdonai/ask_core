@@ -58,13 +58,13 @@ describe('streakService', () => {
         }),
       });
 
-      const result = await incrementStreak('+15551234567', 'UTC', 1);
+      const result = await incrementStreak('+15551234567', 'UTC');
 
       expect(result).toEqual({
         incremented: true,
         streak: 6,
-        vineStage: 'Grafted', 
-        declarationsToday: 1,
+        vineStage: 'Grafted',
+        alreadyDeclaredToday: false,
       });
 
       // Assert transaction updates
@@ -86,13 +86,13 @@ describe('streakService', () => {
         }),
       });
 
-      const result = await incrementStreak('+15551234567', 'UTC', 1);
+      const result = await incrementStreak('+15551234567', 'UTC');
 
       expect(result).toEqual({
         incremented: false,
         streak: 5,
         vineStage: 'Rooted',
-        declarationsToday: 2,
+        alreadyDeclaredToday: true,
       });
 
       // Should not update streak

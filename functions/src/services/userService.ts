@@ -1,11 +1,11 @@
 import { getFirestore } from 'firebase-admin/firestore';
 import { parsePhoneNumberWithError } from 'libphonenumber-js';
-import { computeNextSendAt, computeNextReminderAt } from '../utils/timezone';
+import { computeNextSendAt, computeNextReminderAt, computeNextQuestAt } from '../utils/timezone';
 import pino from 'pino';
 
 // Re-export User type so existing imports from userService still work
 export type { User } from '../types/schemas';
-import type { User } from '../types/schemas';
+import type { PendingUser, User } from '../types/schemas';
 
 const logger = pino();
 
@@ -17,59 +17,51 @@ export const createUser = async (
   phone: string,
   name: string,
   reminderHour = 8,
-  reminderMinute = 0
+  reminderMinute = 0,
+  existingTimezone?: string
 ): Promise<{ exists: boolean; user: Partial<User> }> => {
   const db = getFirestore();
 
   // Derive timezone from country code — expanded mapping
   const parsed = parsePhoneNumberWithError(phone);
-  const TIMEZONE_MAP: Record<string, string> = {
-    NG: 'Africa/Lagos',
-    GH: 'Africa/Accra',
-    KE: 'Africa/Nairobi',
-    ZA: 'Africa/Johannesburg',
-    ET: 'Africa/Addis_Ababa',
-    TZ: 'Africa/Dar_es_Salaam',
-    UG: 'Africa/Kampala',
-    US: 'America/New_York',
-    CA: 'America/Toronto',
-    BR: 'America/Sao_Paulo',
-    GB: 'Europe/London',
-    DE: 'Europe/Berlin',    
-    FR: 'Europe/Paris',
-    IN: 'Asia/Kolkata',
-    PK: 'Asia/Karachi',
-    BD: 'Asia/Dhaka',
-    AU: 'Australia/Sydney',
-  };
-  const timezone = (parsed?.country && TIMEZONE_MAP[parsed.country]) || 'UTC';
+  const countryCode = parsed?.country || '';
+  const { resolveCountryTimezone } = await import('../utils/timezone');
+  const timezone = existingTimezone || resolveCountryTimezone(countryCode);
 
   const userId = phone.replace('+', '');
   const userRef = db.collection('users').doc(userId);
   const doc = await userRef.get();
+  const existingData = doc.exists ? doc.data() as Partial<User & PendingUser> : null;
 
-  if (doc.exists) {
+  if (doc.exists && !existingData?.awaitingOnboardingStep) {
     logger.info({ userId }, 'User already registered');
-    return { exists: true, user: doc.data() as User };
+    return { exists: true, user: existingData as User };
   }
 
   const localTime = `${reminderHour.toString().padStart(2, '0')}:${reminderMinute.toString().padStart(2, '0')}`;
-  // Compute UTC equivalent of the reminder time (HH:MM bucket used for dispatcher equality query)
-  const reminderDate = new Date();
-  reminderDate.setHours(reminderHour, reminderMinute, 0, 0);
-  const utcHH = reminderDate.getUTCHours().toString().padStart(2, '0');
-  const utcMM = reminderDate.getUTCMinutes().toString().padStart(2, '0');
-  const reminderTimeUTC = `${utcHH}:${utcMM}`;
+  
+  // ── UTC Conversion Fix ───────────────────────────────────────────────────
+  // Use Luxon to accurately convert the user's local time to UTC, respecting
+  // their specific timezone offset rather than the server's local timezone.
+  // Note: Due to DST, this HH:MM bucket will drift. The dispatchers rely entirely
+  // on nextSendAt (which is a precise timestamp recalculated daily) to avoid DST bugs.
+  const { DateTime } = await import('luxon');
+  const localDateTime = DateTime.fromObject(
+    { hour: reminderHour, minute: reminderMinute },
+    { zone: timezone }
+  );
+  const reminderTimeUTC = localDateTime.toUTC().toFormat('HH:mm');
 
   const userData: User = {
     phone,
-    name,
+    name: name || existingData?.name || '',
     timezone,
     reminderTime: localTime,
     reminderTimeLocal: localTime,
     reminderTimeUTC,
     nextSendAt: computeNextSendAt(timezone, reminderHour, reminderMinute),
     nextReminderAt: computeNextReminderAt(timezone),
+    nextQuestAt: computeNextQuestAt(timezone),
     lockedUntil: null,
     streak: 0,
     vineStage: 'Grafted',
@@ -96,12 +88,15 @@ export const createUser = async (
     questChaptersLogged: 0,
     currentQuizQuestionIndex: 0,
     currentQuizScore: 0,
+    lastMorningDeliveryId: null,
+    lastReminderDeliveryId: null,
+    lastQuestDeliveryId: null,
     joinedAt: new Date(),
     createdAt: new Date(),
     updatedAt: new Date(),
   };
 
-  await userRef.set(userData);
+  await userRef.set(userData, { merge: true });
   logger.info({ phone }, 'New user created');
   return { exists: false, user: userData };
 };
@@ -130,7 +125,7 @@ export const setPauseState = async (phone: string, paused: boolean): Promise<voi
  */
 export const setOnboardingStep = async (
   phone: string,
-  step: 'name' | 'time' | null
+  step: 'name' | 'timezone' | 'time' | null
 ): Promise<void> => {
   const db = getFirestore();
   const userId = phone.replace('+', '');
@@ -147,13 +142,14 @@ export const setOnboardingStep = async (
 export const createPendingUser = async (phone: string): Promise<void> => {
   const db = getFirestore();
   const userId = phone.replace('+', '');
-  await db.collection('users').doc(userId).set({
+  const pendingUser: PendingUser = {
     userId,
     phone,
     awaitingOnboardingStep: 'name',
     createdAt: new Date(),
     updatedAt: new Date(),
-  });
+  };
+  await db.collection('users').doc(userId).set(pendingUser);
   logger.info({ userId }, 'Pending user document created');
 };
 

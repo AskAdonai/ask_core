@@ -7,9 +7,6 @@ node_modules/
 **/.env
 **/*.env
 
-# Block TypeScript source — only compiled lib/ JS is needed at runtime
-src/
-
 # Block test files
 **/*.test.ts
 **/*.spec.ts
