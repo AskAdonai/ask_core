@@ -2,9 +2,10 @@ import { distance } from 'fastest-levenshtein';
 import { normalizeInput } from '../utils/normalizeInput';
 
 export const VALID_KEYWORDS = [
-  'ask', 'seek', 'knock', 'journal', 'vine', 
-  'need', 'remind', 'pause', 'resume', 'help', 
-  'quest', 'watch', 'log', 'quiz', 'progress',
+  'ask', 'seek', 'knock', 'journal', 'vine',
+  'remind', 'pause', 'resume', 'help',
+  'stop', 'optout', 'unsubscribe', 
+  'quest', 'watch', 'log', 'quiz', 'progress', 'unquest', 'leavequest',
   'testmonday', 'testtuesday', 'testwednesday',
   'testthursday', 'testfriday', 'testsaturday'
 ];

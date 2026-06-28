@@ -1,5 +1,9 @@
 import { sendWhatsAppMessage } from '../../services/twilioService';
-import { getQuestProgress, advanceQuestVideo } from '../../services/questProgressService';
+import {
+  getQuestProgress,
+  advanceQuestVideo,
+  syncQuestWeekToCalendar,
+} from '../../services/questProgressService';
 import { getFirestore } from 'firebase-admin/firestore';
 import type { User, QuestContent } from '../../types/schemas';
 import pino from 'pino';
@@ -17,6 +21,9 @@ export const deliverNextVideoEarly = async (
     );
     return;
   }
+
+  const timezone = user.timezone || 'UTC';
+  await syncQuestWeekToCalendar(phone, timezone);
 
   const existing = await getQuestProgress(phone);
   if (!existing || !existing.active) {
@@ -46,7 +53,7 @@ export const deliverNextVideoEarly = async (
   }
 
   const content = contentDoc.data() as QuestContent;
-  
+
   // Build ordered video sequence from the structured days object (Mon, Wed, Fri)
   const VIDEO_DAYS = ['monday', 'wednesday', 'friday'] as const;
   const videoDays = VIDEO_DAYS
@@ -64,13 +71,31 @@ export const deliverNextVideoEarly = async (
   const targetDay = videoDays[currentVideoIndex];
   const bookTitle = content.weeklyChapterSpan || `Week ${week}`;
   const dayLabel = targetDay.day.charAt(0).toUpperCase() + targetDay.day.slice(1);
+  const dayContent = content.days?.[targetDay.day];
+  const readingPortion = dayContent?.readingPortion?.trim();
 
-  const msg = `📺 *Week ${week} — ${bookTitle}*\n\nHere is your early video for ${dayLabel}.`;
+  let msg =
+    `📺 *Week ${week} — ${bookTitle}*\n\n` +
+    `Here is your early video for ${dayLabel}.`;
 
-  await sendWhatsAppMessage(phone, msg, targetDay.videoLink ? [targetDay.videoLink] : undefined);
+  if (readingPortion) {
+    msg += `\n\n*Reading:* ${readingPortion}`;
+  }
 
-  // Increment video index
-  await advanceQuestVideo(phone);
+  if (targetDay.videoLink) {
+    // YouTube/page links must be in the body — WhatsApp mediaUrl only accepts direct media files.
+    msg += `\n\n👉 Watch here: ${targetDay.videoLink}`;
+  }
 
-  logger.info({ phone, week, videoIndex: currentVideoIndex }, 'Early Quest video delivered');
+  try {
+    await sendWhatsAppMessage(phone, msg);
+    await advanceQuestVideo(phone);
+    logger.info({ phone, week, videoIndex: currentVideoIndex, day: targetDay.day }, 'Early Quest video delivered');
+  } catch (error) {
+    logger.error({ error, phone, week, videoIndex: currentVideoIndex }, 'Failed to send early Quest video');
+    await sendWhatsAppMessage(
+      phone,
+      `Sorry, I couldn't send that video right now. Please try *WATCH* again in a moment.`,
+    );
+  }
 };

@@ -26,11 +26,22 @@ Thumbs.db
 .env
 .env.local
 .env.*.local
+functions/.env
+functions/.env.yaml
+
+# Seeding scripts (local ops only — keep off GitHub)
+functions/seed_*
+functions/verify_seed.ts
+functions/verify_quest_*
+functions/src/seed/*.seed.ts
+functions/src/seed/seedQuestContent.ts
+functions/src/seed/createQuizTemplate.ts
+functions/src/seed/migrate.ts
+functions/src/seed/migrateQuestUsers.ts
 
 # Misc
 *.tgz
 server.log
-functions/.env
 .text.txt
 gcp-key.json
 infra_.md

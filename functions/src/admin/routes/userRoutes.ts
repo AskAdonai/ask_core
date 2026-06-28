@@ -1,9 +1,19 @@
 import { Router, Request, Response } from 'express';
-import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { getFirestore, FieldValue, DocumentData } from 'firebase-admin/firestore';
 import pino from 'pino';
 
 const logger = pino();
 const userRoutes = Router();
+
+function normalizeUserId(phone: string): string {
+  return decodeURIComponent(phone).replace(/^\+/, '');
+}
+
+function sanitizeUserData(data: DocumentData): DocumentData {
+  const sanitized = { ...data };
+  delete sanitized.password;
+  return sanitized;
+}
 
 /**
  * @swagger
@@ -37,9 +47,11 @@ userRoutes.get('/', async (req: Request, res: Response): Promise<void> => {
     const db = getFirestore();
     const snap = await db.collection('users').get();
     const users = snap.docs.map(doc => {
-      const data = doc.data();
-      // send back all fields without the password field if it exists
-      delete data.password;
+      const data = sanitizeUserData(doc.data());
+      data.id = doc.id;
+      if (!data.phone) {
+        data.phone = `+${doc.id}`;
+      }
       return data;
     });
     res.status(200).json({ users });
@@ -85,7 +97,7 @@ userRoutes.get('/', async (req: Request, res: Response): Promise<void> => {
 userRoutes.get('/:phone', async (req: Request, res: Response): Promise<void> => {
   try {
     const phone = req.params.phone as string;
-    const userId = phone.replace('+', '');
+    const userId = normalizeUserId(phone);
     const db = getFirestore();
     const doc = await db.collection('users').doc(userId).get();
 
@@ -94,7 +106,13 @@ userRoutes.get('/:phone', async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    res.status(200).json({ user: doc.data() });
+    const user = sanitizeUserData(doc.data()!);
+    user.id = doc.id;
+    if (!user.phone) {
+      user.phone = `+${userId}`;
+    }
+
+    res.status(200).json({ user });
   } catch (error) {
     logger.error({ error }, 'Error fetching user');
     res.status(500).json({ error: 'Internal server error' });
@@ -145,13 +163,19 @@ userRoutes.get('/:phone', async (req: Request, res: Response): Promise<void> => 
 userRoutes.put('/:phone', async (req: Request, res: Response): Promise<void> => {
   try {
     const phone = req.params.phone as string;
-    const userId = phone.replace('+', '');
-    const updates = req.body;
+    const userId = normalizeUserId(phone);
+    const updates = { ...req.body };
 
     if (Object.keys(updates).length === 0) {
       res.status(400).json({ error: 'No update payload provided' });
       return;
     }
+
+    // Prevent overwriting identity or auth fields via admin update
+    delete updates.phone;
+    delete updates.password;
+    delete updates.createdAt;
+    delete updates.joinedAt;
 
     const db = getFirestore();
     const docRef = db.collection('users').doc(userId);
@@ -167,7 +191,13 @@ userRoutes.put('/:phone', async (req: Request, res: Response): Promise<void> => 
       { merge: true }
     );
 
-    res.status(200).json({ status: 'success', message: `User ${phone} updated` });
+    const updatedDoc = await docRef.get();
+    const user = sanitizeUserData(updatedDoc.data()!);
+    if (!user.phone) {
+      user.phone = `+${userId}`;
+    }
+
+    res.status(200).json({ status: 'success', message: `User ${phone} updated`, user });
   } catch (error) {
     logger.error({ error }, 'Error updating user');
     res.status(500).json({ error: 'Internal server error' });
@@ -210,7 +240,7 @@ userRoutes.put('/:phone', async (req: Request, res: Response): Promise<void> => 
 userRoutes.delete('/:phone', async (req: Request, res: Response): Promise<void> => {
   try {
     const phone = req.params.phone as string;
-    const userId = phone.replace('+', '');
+    const userId = normalizeUserId(phone);
     const db = getFirestore();
     const docRef = db.collection('users').doc(userId);
 
@@ -279,8 +309,9 @@ userRoutes.post('/', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    const userId = normalizeUserId(phone);
     const db = getFirestore();
-    const docRef = db.collection('users').doc(phone);
+    const docRef = db.collection('users').doc(userId);
     const doc = await docRef.get();
 
     if (doc.exists) {
@@ -288,8 +319,11 @@ userRoutes.post('/', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
+    const normalizedPhone = phone.startsWith('+') ? phone.replace(/\s/g, '') : `+${userId}`;
+
     await docRef.set({
       ...userData,
+      phone: normalizedPhone,
       createdAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp()
     });

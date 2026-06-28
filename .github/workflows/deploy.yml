@@ -7,7 +7,7 @@ on:
   workflow_dispatch:          # Allow manual trigger from GitHub UI
 
 env:
-  PROJECT_ID: whatapp-497611
+  PROJECT_ID: askwhatsappbot
   REGION: us-central1
   RUNTIME: nodejs22
 

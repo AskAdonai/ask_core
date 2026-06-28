@@ -62,6 +62,14 @@ service cloud.firestore {
       allow read, write: if isBackendRequest();
     }
 
+    match /twilioStatusEvents/{eventId} {
+      allow read, write: if isBackendRequest();
+    }
+
+    match /dispatchRuns/{runId} {
+      allow read, write: if isBackendRequest();
+    }
+
     // ── Deny everything else ───────────────────────────────────────────────────
     match /{document=**} {
       allow read, write: if false;

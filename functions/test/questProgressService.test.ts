@@ -1,11 +1,16 @@
 import {
   getQuestProgress,
   startQuest,
+  stopQuest,
   advanceQuestVideo,
   advanceQuestWeek,
   logIndependentChapter,
-  recordQuizScore
+  recordQuizScore,
 } from '../src/services/questProgressService';
+
+jest.mock('../src/utils/calendarWeek', () => ({
+  getCurrentCalendarWeek: jest.fn(() => 26),
+}));
 
 const mockGet = jest.fn();
 const mockUpdate = jest.fn();
@@ -57,7 +62,7 @@ describe('questProgressService', () => {
       expect(progress).toBeNull();
     });
 
-    it('returns progress data', async () => {
+    it('returns progress data with calendar week when active', async () => {
       mockGet.mockResolvedValueOnce({
         exists: true,
         data: () => ({
@@ -65,27 +70,38 @@ describe('questProgressService', () => {
           questWeek: 2,
           questVideoIndex: 1,
           questChaptersLogged: 5,
+          timezone: 'UTC',
         }),
       });
 
       const progress = await getQuestProgress('+15551234567');
       expect(progress).toEqual({
         active: true,
-        week: 2,
-        videoIndex: 1,
+        week: 26,
+        videoIndex: 0,
         chaptersLogged: 5,
       });
     });
   });
 
   describe('startQuest', () => {
-    it('resets quest progress fields', async () => {
-      await startQuest('+15551234567');
+    it('enrolls on the current global calendar week', async () => {
+      await startQuest('+15551234567', 'UTC');
       expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({
         questActive: true,
-        questWeek: 1,
+        questWeek: 26,
         questVideoIndex: 0,
         questChaptersLogged: 0,
+        awaitingQuestConfirm: false,
+      }));
+    });
+  });
+
+  describe('stopQuest', () => {
+    it('deactivates quest without affecting the ASK account', async () => {
+      await stopQuest('+15551234567');
+      expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({
+        questActive: false,
         awaitingQuestConfirm: false,
       }));
     });
@@ -101,10 +117,19 @@ describe('questProgressService', () => {
   });
 
   describe('advanceQuestWeek', () => {
-    it('increments week and resets video index', async () => {
-      await advanceQuestWeek('+15551234567');
+    it('syncs quest week to the calendar and resets video index when needed', async () => {
+      mockGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          questActive: true,
+          questWeek: 20,
+        }),
+      });
+
+      await advanceQuestWeek('+15551234567', 'UTC');
+
       expect(mockUpdate).toHaveBeenCalledWith(expect.objectContaining({
-        questWeek: { __increment: 1 },
+        questWeek: 26,
         questVideoIndex: 0,
       }));
     });

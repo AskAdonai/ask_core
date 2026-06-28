@@ -1,0 +1,86 @@
+Critical blockers (fix before go-live)
+1. WhatsApp templates are disabled in code
+In twilioService.ts, most outbound template SIDs are hardcoded to undefined:
+
+
+twilioService.ts
+Lines 205-205
+  const contentSid = undefined; // process.env.TWILIO_CONTENT_SID_QUIZ_RESPONSE;
+Same pattern for quest (Mon–Sat), quiz responses, and SEEK declaration (sendKnockResponse).
+
+Impact: Proactive messages (morning card, quests, reminders) fall back to plain text. Outside WhatsApp’s 24-hour session window, those sends fail silently or error — the #1 production failure mode for this bot.
+
+Morning devotion is the exception (TWILIO_CONTENT_SID_MORNING_DEVOTION is read from env), but it must exist in Secret Manager and be approved in Twilio.
+
+
+
+
+Impact: Debug behavior in admin, possible verbose logging, unprofessional ops posture.
+
+4. No Twilio webhook signature validation
+whatsappWebhook is public with no X-Twilio-Signature check.
+
+Impact: Anyone who finds the URL can POST fake messages and trigger bot logic / outbound sends.
+
+
+7. Twilio Account SID may be wrong type
+.env / .env.yaml use SK9922... (API Key SID). The SDK expects AC... (Account SID) unless you’ve refactored for API-key auth.
+
+Impact: Sends may work today via Secret Manager with a different value, but handover docs and repo config disagree — client will be confused when rotating credentials.
+
+High priority (client will notice within days)
+Gap	Why it matters
+testmonday / testsaturday open in prod
+Any user can trigger real quest template sends via webhook (webhookRouter.ts:129-131)
+Firestore rules not in deploy pipeline
+deploy.sh deploys indexes but not firestore.rules — rules only help if deployed
+Reminder/quest have no delivery logging
+Morning pipeline logs to deliveryLogs; reminder/quest only log to Cloud Logging — dashboard blind spot
+CI doesn’t run tests
+GitHub workflow compiles TypeScript only; 171 tests never run on push
+Legacy deploy scripts still in repo
+functions/deploy-all.sh, deploy-workers.sh set NODE_ENV=debug and deploy wrong config
+Phone number typo
+.env.yaml: +2340933880433 vs .env: +2349033880433 — one is wrong
+No monitoring/alerting
+No uptime checks, error-rate alerts, or “morning send failed” notifications
+Admin bootstrap not documented end-to-end
+Client needs: create superadmin → lock down bootstrap → verify CORS for ask.elastrocloud.com
+Content must be seeded in prod
+Prayer cards, themes, quest weeks, knockMenu/current — code assumes Firestore content exists
+Medium (polish / handover quality)
+Gap	Notes
+README outdated
+Still says Node 20, old architecture, wrong example webhook URL
+ADMIN_API_DOCS.md incomplete
+Missing auth, staff, stats routes
+.env.example incomplete
+Missing R2 vars, template SIDs, ADMIN_BOOTSTRAP_SECRET, PUBSUB_TOPIC_QUEST_SEND
+Template setup docs untracked
+WHATSAPP_MORNING_DEVOTION_TEMPLATE.md, WHATSAPP_SEEK_DECLARATION_TEMPLATE.md not in repo
+Thin test coverage on critical paths
+No dedicated tests for onboarding, quest flow, remind handler, admin auth
+Orphan env var
+PUBSUB_TOPIC_BIBLE_SEND — not used in code
+Thursday/Sunday quest
+Plain text only (by design, but client may not know)
+What is in good shape
+Core functions deployed: whatsappWebhook, adminApi, minuteTick, all 3 workers
+Keyword routing: SEEK = declaration, KNOCK = theme menu
+Morning pipeline + delivery logs + Twilio status callbacks (recent work)
+Firestore indexes for delivery logs (deployed)
+./deploy.sh is a solid full deploy path when used correctly
+171 unit tests pass locally
+Client handover checklist (what they’d expect you to deliver)
+Security pack — rotate all secrets, remove .env.yaml from git, Secret Manager only, webhook signature validation
+Twilio pack — all templates approved + SIDs wired in code; inbound webhook + status callback URLs documented and verified
+Deploy pack — one script (deploy.sh), CI updated or disabled, NODE_ENV=production
+Ops pack — delivery dashboard working, quest index deployed, alerting on failed sends
+Content pack — prod Firestore seeded (prayer cards, themes, quests, knock menu)
+Admin pack — superadmin created, bootstrap disabled, CORS locked to their domain
+Docs pack — README, runbook (“morning didn’t send → check X”), env var reference, smoke test script
+Smoke test proof — onboarding → morning send → SEEK → YES → KNOCK → quest enroll, with screenshots or log IDs
+One-line verdict
+The architecture and core flows work, but it’s not client-ready because: templates are disabled in code, secrets are in git, CI/deploy docs are stale, security hardening is missing, and ops visibility is morning-only.
+
+If you want, I can turn this into a prioritized fix plan (e.g. “2 hours to unblock go-live” vs “full handover package”) and start implementing the blockers.

@@ -14,8 +14,8 @@ server.log
 *.log
 **/*.test.ts
 
-# Exclude source TypeScript (only compiled lib/ is needed)
-functions/src/
+# Deploy uses --source=functions (functions/.gcloudignore applies there).
+# Do not exclude functions/src/ — Cloud Build compiles TypeScript on deploy.
 
 # Exclude local dev config
 .text.txt

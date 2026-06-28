@@ -1,6 +1,10 @@
 import twilio from 'twilio';
 import pino from 'pino';
 import { AsyncLocalStorage } from 'async_hooks';
+import {
+  isTwilioPlaceholderSid,
+  resolveTwilioClientCredentials,
+} from './twilioCredentials';
 
 const logger = pino();
 
@@ -23,19 +27,34 @@ const typingContext = new AsyncLocalStorage<TwilioTypingContext>();
 
 const getTwilioClient = () => {
   if (!twilioClient) {
-    const accountSid = process.env.TWILIO_ACCOUNT_SID;
-    const authToken = process.env.TWILIO_AUTH_TOKEN;
-    if (!accountSid || !authToken) {
-      throw new Error('TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN must be set');
-    }
-    twilioClient = twilio(accountSid, authToken);
+    const { accountSid, username, password } = resolveTwilioClientCredentials();
+    twilioClient = twilio(username, password, { accountSid });
   }
   return twilioClient;
 };
 
-const isMock = () => {
-  const sid = process.env.TWILIO_ACCOUNT_SID;
-  return !sid || sid === 'your_account_sid' || sid === 'mock';
+const isMock = () => isTwilioPlaceholderSid(process.env.TWILIO_ACCOUNT_SID);
+
+/** URL Twilio POSTs message status updates to (delivered, failed, read, etc.). */
+export const getTwilioStatusCallbackUrl = (): string | undefined => {
+  if (process.env.TWILIO_STATUS_CALLBACK_URL) {
+    return process.env.TWILIO_STATUS_CALLBACK_URL.trim();
+  }
+  const base = process.env.TWILIO_WEBHOOK_BASE_URL?.trim();
+  if (base) {
+    return `${base.replace(/\/$/, '')}/status`;
+  }
+  return undefined;
+};
+
+export const withStatusCallback = <T extends Record<string, unknown>>(params: T): T => {
+  const statusCallback = getTwilioStatusCallbackUrl();
+  if (!statusCallback) return params;
+  return {
+    ...params,
+    statusCallback,
+    statusCallbackMethod: 'POST',
+  };
 };
 
 // Typing delay has been removed to improve bot performance.
@@ -152,105 +171,15 @@ export const sendWhatsAppMessage = async (to: string, body: string, mediaUrl?: s
       messageParams.mediaUrl = mediaUrl;
     }
 
-    const message = await withTypingIndicator(() => client.messages.create(messageParams), body);
+    const message = await withTypingIndicator(
+      () => client.messages.create(withStatusCallback(messageParams)),
+      body,
+    );
     logger.info({ messageSid: message.sid, to, hasMedia: !!mediaUrl }, 'Twilio message sent');
     return message.sid;
   } catch (error) {
     logger.error({ error, to }, 'Failed to send Twilio message');
     throw error;
-  }
-};
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Interactive quick-reply (3 buttons — used for quiz questions)
-// ─────────────────────────────────────────────────────────────────────────────
-
-export interface QuizButtonPayload {
-  questionNumber: number;  // 1-based, shown in header
-  totalQuestions: number;
-  bookTitle: string;
-  questionText: string;
-  options: [string, string, string];  // exactly A, B, C
-}
-
-/**
- * Sends an interactive quick-reply message with 3 clickable option buttons.
- *
- * Requires TWILIO_CONTENT_SID_QUIZ to be set to a pre-created
- * twilio/quick-reply content template SID (HXxxx…).
- *
- * Template variables:
- *   {{1}} — header line (e.g. "Exodus — Question 2 of 4")
- *   {{2}} — visible question body with A/B/C option text
- *   {{3}} — option A button label
- *   {{4}} — option B button label
- *   {{5}} — option C button label
- *
- * Falls back to plain text if the content SID is not configured.
- */
-export const sendQuizQuestion = async (
-  to: string,
-  payload: QuizButtonPayload
-): Promise<string> => {
-  const contentSid = process.env.TWILIO_CONTENT_SID_QUIZ;
-
-  // ── Fallback: plain text with A/B/C labels ────────────────────────────────
-  if (isMock() || !contentSid) {
-    const { questionNumber, totalQuestions, bookTitle, questionText, options } = payload;
-    const fallback =
-      `*${bookTitle} — Question ${questionNumber} of ${totalQuestions}*\n\n` +
-      `${questionText}\n\n` +
-      `A — ${options[0]}\n` +
-      `B — ${options[1]}\n` +
-      `C — ${options[2]}\n\n` +
-      `_Reply A, B or C_`;
-    logger.info({ to }, '[MOCK/FALLBACK] sendQuizQuestion — no contentSid, using text');
-    return sendWhatsAppMessage(to, fallback);
-  }
-
-  // ── Interactive quick-reply via Content API ───────────────────────────────
-  try {
-    const client = getTwilioClient();
-    const from = `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`;
-    const toAddress = `whatsapp:${to}`;
-
-    const header = `${payload.bookTitle} — Question ${payload.questionNumber} of ${payload.totalQuestions}`;
-
-    const visibleQuestionBody =
-      `${payload.questionText}\n\n` +
-      `A — ${payload.options[0]}\n` +
-      `B — ${payload.options[1]}\n` +
-      `C — ${payload.options[2]}`;
-
-    const contentVariables = {
-      '1': header,
-      '2': visibleQuestionBody,
-      '3': 'A',
-      '4': 'B',
-      '5': 'C',
-    };
-
-    const message = await withTypingIndicator(() => client.messages.create({
-      from,
-      to: toAddress,
-      contentSid,
-      contentVariables: JSON.stringify(contentVariables),
-    } as any), `${header}\n${payload.questionText}`); // Twilio SDK typings lag behind Content API support
-
-    logger.info({ messageSid: message.sid, to }, 'Quiz question sent (interactive)');
-    return message.sid;
-  } catch (error) {
-    logger.error({ error, to }, 'Failed to send interactive quiz question — falling back to text');
-    // Graceful degradation
-    const { questionNumber, totalQuestions, bookTitle, questionText, options } = payload;
-    const fallback =
-      `*${bookTitle} — Question ${questionNumber} of ${totalQuestions}*\n\n` +
-      `${questionText}\n\n` +
-      `A — ${options[0]}\n` +
-      `B — ${options[1]}\n` +
-      `C — ${options[2]}\n\n` +
-      `_Reply A, B or C_`;
-    return sendWhatsAppMessage(to, fallback);
   }
 };
 
@@ -270,7 +199,7 @@ export const sendQuizQuestion = async (
  * Falls back to plain text if the content SID is not configured.
  */
 export const sendQuizResponse = async (to: string, body: string): Promise<string> => {
-  const contentSid = process.env.TWILIO_CONTENT_SID_QUIZ_RESPONSE;
+  const contentSid = undefined; // process.env.TWILIO_CONTENT_SID_QUIZ_RESPONSE;
 
   if (isMock() || !contentSid) {
     logger.info({ to }, '[MOCK/FALLBACK] sendQuizResponse — no contentSid, using text');
@@ -282,12 +211,12 @@ export const sendQuizResponse = async (to: string, body: string): Promise<string
     const from = `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`;
     const toAddress = `whatsapp:${to}`;
 
-    const message = await withTypingIndicator(() => client.messages.create({
+    const message = await withTypingIndicator(() => client.messages.create(withStatusCallback({
       from,
       to: toAddress,
       contentSid,
       contentVariables: JSON.stringify({ '1': body }),
-    } as any), body);
+    } as any)), body);
 
     logger.info({ messageSid: message.sid, to }, 'Quiz response sent (content template)');
     return message.sid;
@@ -356,7 +285,7 @@ export interface QuestSaturdayPayload {
  * Env var: TWILIO_CONTENT_SID_QUEST_MONDAY
  */
 export const sendQuestMonday = async (to: string, payload: QuestMondayPayload): Promise<string> => {
-  const contentSid = process.env.TWILIO_CONTENT_SID_QUEST_MONDAY;
+  const contentSid = undefined; // process.env.TWILIO_CONTENT_SID_QUEST_MONDAY;
 
   const fallback =
     `Hello ${payload.name} 👋👋\n\n` +
@@ -381,12 +310,12 @@ export const sendQuestMonday = async (to: string, payload: QuestMondayPayload): 
       'ReadingPortion': payload.readingPortion,
       'VideoLink': payload.videoLink,
     };
-    const message = await withTypingIndicator(() => client.messages.create({
+    const message = await withTypingIndicator(() => client.messages.create(withStatusCallback({
       from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
       to: `whatsapp:${to}`,
       contentSid,
       contentVariables: JSON.stringify(variables),
-    } as any), fallback);
+    } as any)), fallback);
     logger.info({ messageSid: message.sid, to }, 'Quest Monday sent (content template)');
     return message.sid;
   } catch (error) {
@@ -401,7 +330,7 @@ export const sendQuestMonday = async (to: string, payload: QuestMondayPayload): 
  * Env var: TWILIO_CONTENT_SID_QUEST_TUESDAY
  */
 export const sendQuestTuesday = async (to: string, payload: QuestTuesdayPayload): Promise<string> => {
-  const contentSid = process.env.TWILIO_CONTENT_SID_QUEST_TUESDAY;
+  const contentSid = undefined; // process.env.TWILIO_CONTENT_SID_QUEST_TUESDAY;
 
   const fallback =
     `Hello ${payload.name} 👋\n\n` +
@@ -421,12 +350,12 @@ export const sendQuestTuesday = async (to: string, payload: QuestTuesdayPayload)
       'TuesdaySummary': payload.tuesdaySummary,
       'ReflectionQuote': payload.reflectionQuote,
     };
-    const message = await withTypingIndicator(() => client.messages.create({
+    const message = await withTypingIndicator(() => client.messages.create(withStatusCallback({
       from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
       to: `whatsapp:${to}`,
       contentSid,
       contentVariables: JSON.stringify(variables),
-    } as any), fallback);
+    } as any)), fallback);
     logger.info({ messageSid: message.sid, to }, 'Quest Tuesday sent (content template)');
     return message.sid;
   } catch (error) {
@@ -441,7 +370,7 @@ export const sendQuestTuesday = async (to: string, payload: QuestTuesdayPayload)
  * Env var: TWILIO_CONTENT_SID_QUEST_WEDNESDAY
  */
 export const sendQuestWednesday = async (to: string, payload: QuestWednesdayPayload): Promise<string> => {
-  const contentSid = process.env.TWILIO_CONTENT_SID_QUEST_WEDNESDAY;
+  const contentSid = undefined; // process.env.TWILIO_CONTENT_SID_QUEST_WEDNESDAY;
 
   const fallback =
     `Hello ${payload.name} 👋👋\n\n` +
@@ -468,12 +397,12 @@ export const sendQuestWednesday = async (to: string, payload: QuestWednesdayPayl
       'EstimatedTime': payload.estimatedTime,
       'SignOff': payload.signOff,
     };
-    const message = await withTypingIndicator(() => client.messages.create({
+    const message = await withTypingIndicator(() => client.messages.create(withStatusCallback({
       from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
       to: `whatsapp:${to}`,
       contentSid,
       contentVariables: JSON.stringify(variables),
-    } as any), fallback);
+    } as any)), fallback);
     logger.info({ messageSid: message.sid, to }, 'Quest Wednesday sent (content template)');
     return message.sid;
   } catch (error) {
@@ -488,7 +417,7 @@ export const sendQuestWednesday = async (to: string, payload: QuestWednesdayPayl
  * Env var: TWILIO_CONTENT_SID_QUEST_FRIDAY
  */
 export const sendQuestFriday = async (to: string, payload: QuestFridayPayload): Promise<string> => {
-  const contentSid = process.env.TWILIO_CONTENT_SID_QUEST_FRIDAY;
+  const contentSid = undefined; // process.env.TWILIO_CONTENT_SID_QUEST_FRIDAY;
 
   const fallback =
     `Hello ${payload.name} 👋\n\n` +
@@ -514,12 +443,12 @@ export const sendQuestFriday = async (to: string, payload: QuestFridayPayload): 
       'VideoLink': payload.videoLink,
       'WeeklySummary': payload.weeklySummary,
     };
-    const message = await withTypingIndicator(() => client.messages.create({
+    const message = await withTypingIndicator(() => client.messages.create(withStatusCallback({
       from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
       to: `whatsapp:${to}`,
       contentSid,
       contentVariables: JSON.stringify(variables),
-    } as any), fallback);
+    } as any)), fallback);
     logger.info({ messageSid: message.sid, to }, 'Quest Friday sent (content template)');
     return message.sid;
   } catch (error) {
@@ -534,7 +463,7 @@ export const sendQuestFriday = async (to: string, payload: QuestFridayPayload): 
  * Env var: TWILIO_CONTENT_SID_QUEST_SATURDAY
  */
 export const sendQuestSaturday = async (to: string, payload: QuestSaturdayPayload): Promise<string> => {
-  const contentSid = process.env.TWILIO_CONTENT_SID_QUEST_SATURDAY;
+  const contentSid = undefined; // process.env.TWILIO_CONTENT_SID_QUEST_SATURDAY;
 
   const fallback =
     `Hello ${payload.name} 👋\n\n` +
@@ -558,12 +487,12 @@ export const sendQuestSaturday = async (to: string, payload: QuestSaturdayPayloa
       'QuizLinks': payload.quizLinks,
       'SaturdayEncouragement': payload.saturdayEncouragement,
     };
-    const message = await withTypingIndicator(() => client.messages.create({
+    const message = await withTypingIndicator(() => client.messages.create(withStatusCallback({
       from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
       to: `whatsapp:${to}`,
       contentSid,
       contentVariables: JSON.stringify(variables),
-    } as any), fallback);
+    } as any)), fallback);
     logger.info({ messageSid: message.sid, to }, 'Quest Saturday sent (content template)');
     return message.sid;
   } catch (error) {
@@ -573,11 +502,65 @@ export const sendQuestSaturday = async (to: string, payload: QuestSaturdayPayloa
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Morning devotion quick-reply (SEEK / JOURNAL / VINE)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Sends the scheduled morning devotion with optional quick-reply buttons.
+ * Video and audio URLs are embedded in the message body so they render as links in chat.
+ */
+export const sendMorningDevotionMessage = async (
+  to: string,
+  body: string,
+  imageUrl?: string,
+): Promise<string> => {
+  const { morningDevotionButtonFooter } = await import('../messages/morningMessage');
+  const contentSid = process.env.TWILIO_CONTENT_SID_MORNING_DEVOTION;
+
+  const footer = `\n\n${morningDevotionButtonFooter}`;
+  const fallbackBody = `${body}${footer}`;
+  const mediaUrl = imageUrl && !imageUrl.includes('example.com') ? [imageUrl] : undefined;
+
+  if (isMock() || !contentSid) {
+    logger.info({ to }, '[MOCK/FALLBACK] sendMorningDevotionMessage — no contentSid, using text');
+    return sendWhatsAppMessage(to, fallbackBody, mediaUrl);
+  }
+
+  try {
+    const client = getTwilioClient();
+    const from = `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`;
+    const toAddress = `whatsapp:${to}`;
+
+    if (mediaUrl) {
+      await sendWhatsAppMessage(to, body, mediaUrl);
+    }
+
+    const message = await withTypingIndicator(() => client.messages.create(withStatusCallback({
+      from,
+      to: toAddress,
+      contentSid,
+      contentVariables: JSON.stringify({
+        '1': body,
+        '2': 'SEEK',
+        '3': 'JOURNAL',
+        '4': 'VINE',
+      }),
+    } as any)), fallbackBody);
+
+    logger.info({ messageSid: message.sid, to }, 'Morning devotion sent (interactive)');
+    return message.sid;
+  } catch (error) {
+    logger.error({ error, to }, 'Failed to send morning devotion template — falling back to text');
+    return sendWhatsAppMessage(to, fallbackBody, mediaUrl);
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Knock response content template
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const sendKnockResponse = async (to: string, declarationText: string, mediaUrls?: string[]): Promise<void> => {
-  const contentSid = process.env.TWILIO_CONTENT_SID_KNOCK_RESPONSE;
+  const contentSid = undefined; // process.env.TWILIO_CONTENT_SID_KNOCK_RESPONSE;
   
   const fallback = `Today's declaration:\n\n${declarationText}\n\nSpeak it aloud. When you have declared it, reply *YES*.\n\n• *YES* — I declare it\n• *JOURNAL* — reflect\n• *VINE* — my growth`;
 
@@ -597,12 +580,12 @@ export const sendKnockResponse = async (to: string, declarationText: string, med
     const from = `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`;
     const toAddress = `whatsapp:${to}`;
 
-    const message = await withTypingIndicator(() => client.messages.create({
+    const message = await withTypingIndicator(() => client.messages.create(withStatusCallback({
       from,
       to: toAddress,
       contentSid,
       contentVariables: JSON.stringify({ '1': declarationText }),
-    } as any), fallback);
+    } as any)), fallback);
 
     logger.info({ messageSid: message.sid, to }, 'Knock response sent (content template)');
   } catch (error) {

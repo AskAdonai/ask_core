@@ -1,6 +1,7 @@
 import { getFirestore } from 'firebase-admin/firestore';
 import { sendWhatsAppMessage } from '../../services/twilioService';
-import type { User, QuestLog } from '../../types/schemas';
+import { resolveQuestWeekForUser, resolveQuestVideoIndexForUser } from '../../services/questProgressService';
+import type { User } from '../../types/schemas';
 
 /**
  * Handles the PROGRESS keyword.
@@ -18,28 +19,29 @@ export const sendQuestProgress = async (phone: string, user: Partial<User> | nul
   }
 
   const db = getFirestore();
-  const week = user.questWeek || 1;
-  const videosWatched = user.questVideoIndex || 0;
+  const week = resolveQuestWeekForUser(user);
+  const videosWatched = resolveQuestVideoIndexForUser(user);
   const totalChapters = user.questChaptersLogged || 0;
 
-  // 1. Fetch current week's Quest Content to get the book name
   let bookName = 'the Word';
   let weekIntro = 'God is walking with you today.';
   try {
     const contentDoc = await db.collection('questContent').doc(String(week)).get();
     if (contentDoc.exists) {
-      const content = contentDoc.data() as any;
-      if (content.books) bookName = content.books;
+      const content = contentDoc.data() as { weeklyChapterSpan?: string; weekIntro?: string };
+      if (content.weeklyChapterSpan) bookName = content.weeklyChapterSpan;
       if (content.weekIntro) weekIntro = content.weekIntro;
     }
-  } catch (error) {
-    // Ignore fetch errors, fallback to generic strings
+  } catch {
+    // fallback strings above
   }
 
-
-
-  // 3. Construct and send the progress message
-  const message = `Your Quest — ${user.name}\nWeek: ${week} of 52\nVideos watched this week: ${videosWatched} of 3\nTotal chapters logged: ${totalChapters}\nKeep going. You are in ${bookName} — ${weekIntro}`;
+  const message =
+    `Your Quest — ${user.name}\n` +
+    `Week: ${week} (global cohort)\n` +
+    `Videos watched this week: ${videosWatched} of 3\n` +
+    `Total chapters logged: ${totalChapters}\n` +
+    `Keep going. This week: ${bookName} — ${weekIntro}`;
 
   await sendWhatsAppMessage(phone, message);
 };

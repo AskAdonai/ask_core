@@ -200,6 +200,8 @@ export const handleTimeReply = async (phone: string, rawText: string, user: Part
     vineStage: 'Grafted',
     streak: 0,
     paused: false,
+    optOutRequestedAt: null,
+    dataDeletionScheduledAt: null,
     awaitingOnboardingStep: null,
   } as Partial<User>);
 
@@ -222,6 +224,6 @@ export const handleTimeReply = async (phone: string, rawText: string, user: Part
   // ── Journey Welcome — Message 2 ─────────────────────────────────────────
   await sendWhatsAppMessage(
     phone,
-    `We begin at Season 1 *Believe*.\n\nHowever, if your heart has a specific prayer need at any time — healing, provision, a waiting season — simply type *NEED* at any time and I will bring you targeted prayers alongside your journey.\n\nYou are *Grafted* on Day 1. Your first morning card arrives tomorrow at ${scheduleFields.reminderTimeLocal}. When it does, please read it slowly. Then type *SEEK* when you are ready to go deeper. Type *KNOCK* to make your declaration. Together we will Ask, Seek and Knock every day.\n\nI will see you tomorrow morning. 🙏\n\n_SEEK — get today's word now_\n_NEED — browse prayer themes_\n_HELP — see all I can do_`
+    `We begin at Season 1 *Believe*.\n\nHowever, if your heart has a specific prayer need at any time — healing, provision, a waiting season — simply type *KNOCK* at any time and I will bring you targeted prayers alongside your journey.\n\nYou are *Grafted* on Day 1. Your first morning card arrives tomorrow at ${scheduleFields.reminderTimeLocal}. When it does, please read it slowly. Then type *SEEK* when you are ready to make today's declaration. Together we will Ask, Seek and Knock every day.\n\nI will see you tomorrow morning. 🙏\n\n_SEEK — make today's declaration_\n_KNOCK — browse prayer themes_\n_HELP — see all I can do_`
   );
 };

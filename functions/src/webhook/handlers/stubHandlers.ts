@@ -7,8 +7,6 @@ const stubReply = async (phone: string, featureName: string) => {
 
 export const handleOnboarding = _handleOnboarding;
 
-export const deliverDevotion = async (phone: string, _userData: any) => stubReply(phone, 'Seek Devotion');
-
 export const handleQuestOnboarding = async (phone: string, _userData: any) => stubReply(phone, 'Quest Onboarding');
 export const handleFallback = async (phone: string) => {
   // sent a  template

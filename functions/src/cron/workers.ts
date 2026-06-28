@@ -31,64 +31,107 @@ functions.cloudEvent('processSendWorker', async (cloudEvent: any) => {
   const dataString = Buffer.from(cloudEvent.data.message.data, 'base64').toString('utf8');
   const data = JSON.parse(dataString);
   const userId = data.userId;
-  const deliveryId: string | undefined = data.deliveryId;  // UUID embedded by dispatcher
+  const deliveryId: string | undefined = data.deliveryId;
   const db = getFirestore();
 
-
+  const {
+    writeDeliveryLog,
+    isDuplicateDelivery,
+    markDeliveryProcessed,
+  } = await import('../services/deliveryLogService');
+  const { formatDeliveryError, resolveReminderHourMinute } = await import('../utils/resolveReminderSchedule');
 
   try {
-    // ── Idempotency check (atomic transaction) ────────────────────────────────
-    // If this deliveryId was already processed, this is a Pub/Sub retry.
-    // We ack it silently — no Twilio call, no state mutation.
-    if (deliveryId) {
-      const alreadyProcessed = await db.runTransaction(async (tx) => {
-        const ref = db.collection('users').doc(userId);
-        const snap = await tx.get(ref);
-        if (!snap.exists) return true; // treat missing user as processed (skip)
-        if (snap.data()!.lastMorningDeliveryId === deliveryId) return true; // duplicate
-        // Claim this deliveryId atomically — no other invocation can pass after this
-        tx.update(ref, { lastMorningDeliveryId: deliveryId, updatedAt: new Date() });
-        return false;
+    if (deliveryId && await isDuplicateDelivery(userId, deliveryId, 'lastMorningDeliveryId')) {
+      logger.warn({ userId, deliveryId }, 'Duplicate morning delivery detected — acking without send');
+      await writeDeliveryLog({
+        userId,
+        type: 'MORNING_CARD',
+        status: 'skipped',
+        stage: 'worker',
+        deliveryId,
+        skipReason: 'duplicate_delivery_id',
       });
-      if (alreadyProcessed) {
-        logger.warn({ userId, deliveryId }, 'Duplicate morning delivery detected — acking without send');
-        return;
-      }
+      return;
     }
 
     const userDoc = await db.collection('users').doc(userId).get();
-    if (!userDoc.exists) return;
-    const user = userDoc.data()!;
-
-    // Morning ASK always follows the Journey, even during an active NEED session.
-    const { getJourneyPrayerContent } = await import('../services/prayerCardService');
-    const content = await getJourneyPrayerContent(user.journeyStage ?? 1, user.journeyDayIndex ?? 1);
-    const card = content?.card;
-    const { buildMorningMessage } = await import('../messages/morningMessage');
-    const { text: msgBody, audioUrl, cloudflareMediaId } = buildMorningMessage(user as any, content);
-
-    const mediaUrls: string[] = [];
-    if (content && card) {
-      if (card.imageUrl) mediaUrls.push(card.imageUrl);
-      // We still fall back to the card's URL if buildMorningMessage doesn't override it
-      if (audioUrl) mediaUrls.push(audioUrl);
-      else if (card.morningVoiceNoteUrl) mediaUrls.push(card.morningVoiceNoteUrl);
+    if (!userDoc.exists) {
+      await writeDeliveryLog({
+        userId,
+        type: 'MORNING_CARD',
+        status: 'skipped',
+        stage: 'worker',
+        deliveryId,
+        skipReason: 'user_not_found',
+      });
+      return;
     }
 
-    await sendWhatsAppMessage(user.phone, msgBody, mediaUrls.length > 0 ? mediaUrls : undefined);
+    const user = userDoc.data()!;
+    if (!user.phone) {
+      await writeDeliveryLog({
+        userId,
+        type: 'MORNING_CARD',
+        status: 'skipped',
+        stage: 'worker',
+        deliveryId,
+        skipReason: 'missing_phone',
+      });
+      return;
+    }
 
+    const schedule = resolveReminderHourMinute(user);
+    if (!schedule) {
+      throw new Error(`Missing or invalid reminder schedule for user ${userId}`);
+    }
 
+    const { getJourneyPrayerContent, getKnockPrayerContent } = await import('../services/prayerCardService');
+    const { buildMorningMessage, readActiveThemeId } = await import('../messages/morningMessage');
+    const { sendMorningDevotionMessage } = await import('../services/twilioService');
 
-    // Reschedule
-    await rescheduleAfterSend(userId, user.timezone, user.reminderHour, user.reminderMinute);
+    const journeyContent = await getJourneyPrayerContent(user.journeyStage ?? 1, user.journeyDayIndex ?? 1);
+    const activeThemeId = readActiveThemeId(user as import('../types/User').User);
+    const themeContent = activeThemeId
+      ? await getKnockPrayerContent(activeThemeId, user.knockPrayerIndex ?? 0)
+      : null;
 
+    const { text: msgBody } = buildMorningMessage(user as any, journeyContent, themeContent);
+    const imageUrl = journeyContent?.card?.imageUrl;
+
+    const twilioSid = await sendMorningDevotionMessage(user.phone, msgBody, imageUrl);
+    await rescheduleAfterSend(userId, user.timezone, schedule.hour, schedule.minute);
+
+    if (deliveryId) {
+      await markDeliveryProcessed(userId, deliveryId, 'lastMorningDeliveryId');
+    }
+
+    await writeDeliveryLog({
+      userId,
+      type: 'MORNING_CARD',
+      status: 'sent',
+      stage: 'worker',
+      deliveryId,
+      twilioSid,
+      metadata: {
+        journeyStage: user.journeyStage ?? 1,
+        journeyDayIndex: user.journeyDayIndex ?? 1,
+        hasJourneyContent: !!journeyContent,
+        hasThemeContent: !!themeContent,
+      },
+    });
   } catch (error) {
-    logger.error({ userId, error }, 'Failed to process send worker');
+    const message = formatDeliveryError(error);
+    logger.error({ userId, deliveryId, error }, 'Failed to process send worker');
+    await writeDeliveryLog({
+      userId,
+      type: 'MORNING_CARD',
+      status: 'failed',
+      stage: 'worker',
+      deliveryId,
+      error: message,
+    });
   } finally {
-    // Always release the lease — on success this collapses the lock to actual
-    // execution time rather than the full 2-minute TTL, meaning the next
-    // scheduled run can claim the user immediately after this one finishes.
-    // On failure the lock is also released so the reconciler doesn’t need to wait.
     await releaseExecutionLease('users', userId);
   }
 });
@@ -165,7 +208,7 @@ functions.cloudEvent('processReminderWorker', async (cloudEvent: any) => {
           // Normal evening nudge — user has not declared today.
           await sendWhatsAppMessage(
             user.phone,
-            `You haven’t made your declaration today, ${user.name || 'Friend'}. Reply *KNOCK* to keep your streak alive. 🙏`
+            `You haven’t made your declaration today, ${user.name || 'Friend'}. Reply *SEEK* to keep your streak alive. 🙏`
           );
         }
       }
@@ -220,10 +263,10 @@ functions.cloudEvent('processQuestWorker', async (cloudEvent: any) => {
       const todayNames = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
       const todayName = todayNames[weekday - 1]; // 1=Mon => index 0
 
-      // We are using a Global Calendar Track for quests.
-      // To switch back to an Individual Track, simply change `activeWeek` to `user.questWeek || 1`.
       const { getCurrentCalendarWeek } = await import('../utils/calendarWeek');
+      const { syncQuestWeekToCalendar } = await import('../services/questProgressService');
       const activeWeek = getCurrentCalendarWeek(user.timezone || 'UTC');
+      await syncQuestWeekToCalendar(user.phone, user.timezone || 'UTC');
 
       const contentDoc = await db.collection('questContent').doc(String(activeWeek)).get();
       if (contentDoc.exists) {

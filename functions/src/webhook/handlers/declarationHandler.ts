@@ -1,7 +1,7 @@
 import { getFirestore } from 'firebase-admin/firestore';
 import { sendKnockResponse } from '../../services/twilioService';
-import { getJourneyPrayerContent, getNeedPrayerCard } from '../../services/prayerCardService';
-import { getActiveNeedTheme } from '../../services/needSessionService';
+import { getJourneyPrayerContent, getKnockPrayerContent } from '../../services/prayerCardService';
+import { getActiveKnockTheme } from '../../services/knockSessionService';
 import type { User, DailyDeclaration } from '../../types/schemas';
 import { DateTime } from 'luxon';
 import pino from 'pino';
@@ -9,24 +9,32 @@ import pino from 'pino';
 const logger = pino();
 
 /**
- * Handles the KNOCK keyword.
- * Fetches the daily declaration and audio file, sends it, and prompts the user
- * to declare it 10 times via the YES iterative flow.
+ * KNOCK — declaration flow.
+ *
+ * Fetches today's declaration text, sends it with optional audio,
+ * and enters the YES confirmation loop.
+ *
+ * Declaration source priority:
+ *   1. Calendar-based dailyDeclarations/{YYYY-MM-DD}
+ *   2. Active KNOCK theme prayer's declarationText
+ *   3. Journey prayer card's declarationText
+ *   4. Hardcoded fallback
  */
-export const handleKnock = async (phone: string, user: Partial<User> | null) => {
+export const deliverDeclaration = async (
+  phone: string,
+  user: Partial<User> | null
+): Promise<void> => {
   if (!user) return;
 
   const db = getFirestore();
   const userId = phone.replace('+', '');
 
-  // 1. Determine what declaration text the user is declaring
   let declarationText = '';
   let mediaUrls: string[] = [];
 
   const timezone = user.timezone || 'UTC';
   const todayStr = DateTime.now().setZone(timezone).toFormat('yyyy-MM-dd');
 
-  // First priority: Calendar-based Daily Declaration
   const dailyDeclDoc = await db.collection('dailyDeclarations').doc(todayStr).get();
 
   if (dailyDeclDoc.exists) {
@@ -36,15 +44,17 @@ export const handleKnock = async (phone: string, user: Partial<User> | null) => 
       mediaUrls.push(data.audioUrl);
     }
   } else {
-    // Fallback priority: Need Theme or Journey Content
-    const activeThemeId = await getActiveNeedTheme(phone);
+    const activeThemeId = await getActiveKnockTheme(phone);
     if (activeThemeId) {
-      const idx = Math.max(1, user.needPrayerIndex ?? 0);
-      const needCard = await getNeedPrayerCard(activeThemeId, idx);
-      if (needCard && needCard.declarationText) {
-        declarationText = needCard.declarationText;
-        if (needCard.declarationAudioUrl && !needCard.declarationAudioUrl.includes('example.com')) {
-          mediaUrls.push(needCard.declarationAudioUrl);
+      const knockContent = await getKnockPrayerContent(
+        activeThemeId,
+        user.knockPrayerIndex ?? 0,
+      );
+      const knockCard = knockContent?.prayer;
+      if (knockCard?.declarationText) {
+        declarationText = knockCard.declarationText;
+        if (knockCard.declarationAudioUrl && !knockCard.declarationAudioUrl.includes('example.com')) {
+          mediaUrls.push(knockCard.declarationAudioUrl);
         }
       }
     } else {
@@ -61,14 +71,12 @@ export const handleKnock = async (phone: string, user: Partial<User> | null) => 
 
   declarationText = declarationText.trim() || "I declare God's goodness over my life today.";
 
-  // 2. Build and send the prompt message
   await sendKnockResponse(phone, declarationText, mediaUrls);
 
-  // 3. Set the awaitingDeclarationYes flag
   await db.collection('users').doc(userId).update({
     awaitingDeclarationYes: true,
     updatedAt: new Date(),
   });
 
-  logger.info({ phone }, 'Delivered KNOCK declaration payload and started YES flow');
+  logger.info({ phone }, 'Delivered KNOCK declaration and started YES flow');
 };

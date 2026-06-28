@@ -1,23 +1,23 @@
 import { getFirestore } from 'firebase-admin/firestore';
 import type { PrayerCard } from '../types/PrayerCard';
-import type { ThemePrayer } from '../types/schemas';
+import type { Prayer } from '../types/schemas';
 import pino from 'pino';
 
 export type { PrayerCard };
 
 export interface ResolvedPrayerContent {
   card?: PrayerCard;
-  prayer: ThemePrayer;
+  prayer: Prayer;
   themeId: string;
   prayerId?: string;
-  source: 'journey' | 'need';
+  source: 'journey' | 'knock';
 }
 
 const logger = pino();
 
 /**
  * Fetches the prayer card for a given journey stage and day index.
- * Used by SEEK and the morning dispatch worker.
+ * Used by the morning dispatch worker and SEEK declaration flow.
  *
  * Collection path: prayerCards/{id}
  * Query: journeyStage == stage AND dayIndex == day
@@ -66,10 +66,10 @@ export const getPrayerCardForDay = async (day: number): Promise<PrayerCard | nul
 /**
  * Fetches a reusable prayer by document ID from a theme.
  */
-export const getThemePrayer = async (
+export const getPrayer = async (
   themeId: string,
   prayerId: string
-): Promise<ThemePrayer | null> => {
+): Promise<Prayer | null> => {
   const db = getFirestore();
   const doc = await db
     .collection('prayerThemes')
@@ -83,11 +83,11 @@ export const getThemePrayer = async (
     return null;
   }
 
-  return doc.data() as ThemePrayer;
+  return doc.data() as Prayer;
 };
 
 /**
- * Resolves a Journey card to the ThemePrayer it references.
+ * Resolves a Journey card to the Prayer it references.
  */
 export const getJourneyPrayerContent = async (
   stage: number,
@@ -96,7 +96,7 @@ export const getJourneyPrayerContent = async (
   const card = await getPrayerCard(stage, day);
   if (!card) return null;
 
-  const prayer = await getThemePrayer(card.themeId, card.prayerId);
+  const prayer = await getPrayer(card.themeId, card.prayerId);
   if (!prayer) {
     logger.warn(
       { stage, day, themeId: card.themeId, prayerId: card.prayerId },
@@ -116,12 +116,12 @@ export const getJourneyPrayerContent = async (
 
 /**
  * Fetches a prayer from prayerThemes/{themeId}/prayers sub-collection by index.
- * Returns ThemePrayer or null if not found.
+ * Returns Prayer or null if not found.
  */
-export const getNeedPrayerCard = async (
+export const getKnockPrayerCard = async (
   themeId: string,
   prayerIndex: number
-): Promise<ThemePrayer | null> => {
+): Promise<Prayer | null> => {
   const db = getFirestore();
   const snapshot = await db
     .collection('prayerThemes')
@@ -132,28 +132,28 @@ export const getNeedPrayerCard = async (
     .get();
 
   if (snapshot.empty) {
-    logger.warn({ themeId, prayerIndex }, 'No NEED prayer found in prayerThemes sub-collection');
+    logger.warn({ themeId, prayerIndex }, 'No KNOCK prayer found in prayerThemes sub-collection');
     return null;
   }
 
-  return snapshot.docs[0].data() as ThemePrayer;
+  return snapshot.docs[0].data() as Prayer;
 };
 
 /**
- * Resolves NEED routing from the stored 0-based user position to the next
- * 1-based ThemePrayer.index value.
+ * Resolves KNOCK routing from the stored 0-based user position to the next
+ * 1-based Prayer.index value.
  */
-export const getNeedPrayerContent = async (
+export const getKnockPrayerContent = async (
   themeId: string,
-  needPrayerIndex: number
+  knockPrayerIndex: number
 ): Promise<ResolvedPrayerContent | null> => {
-  const prayerIndex = Math.max(0, needPrayerIndex) + 1;
-  const prayer = await getNeedPrayerCard(themeId, prayerIndex);
+  const prayerIndex = Math.max(0, knockPrayerIndex) + 1;
+  const prayer = await getKnockPrayerCard(themeId, prayerIndex);
   if (!prayer) return null;
 
   return {
     prayer,
     themeId,
-    source: 'need',
+    source: 'knock',
   };
 };

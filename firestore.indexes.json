@@ -41,6 +41,15 @@
       ]
     },
     {
+      "collectionGroup": "users",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "paused",       "order": "ASCENDING" },
+        { "fieldPath": "questActive",  "order": "ASCENDING" },
+        { "fieldPath": "nextQuestAt",  "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "prayerCards",
       "queryScope": "COLLECTION",
       "fields": [
@@ -68,8 +77,32 @@
       "collectionGroup": "deliveryLogs",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "type", "order": "ASCENDING" },
+        { "fieldPath": "sentAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "deliveryLogs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "type", "order": "ASCENDING" },
         { "fieldPath": "sentAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "deliveryLogs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "sentAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "dispatchRuns",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "duty", "order": "ASCENDING" },
+        { "fieldPath": "startedAt", "order": "DESCENDING" }
       ]
     }
   ],

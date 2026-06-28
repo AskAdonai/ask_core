@@ -4,7 +4,7 @@ import { JourneyStage } from './JourneyStage';
  * users/{phoneNumber}
  *
  * Core user document. The document ID IS the phone number (E.164, e.g. +2348012345678).
- * All NEED and Quest state lives here — no separate collections for runtime state.
+ * All KNOCK and Quest state lives here — no separate collections for runtime state.
  *
  * Sub-collections:
  *   users/{phone}/journal/{YYYY-MM-DD}        → JournalEntry
@@ -44,23 +44,27 @@ export interface User {
 
   // ── Control Flags ──────────────────────────────────────────────────────────
   paused: boolean;
+  /** Set when the user opts out (STOP). Messages stop immediately. */
+  optOutRequestedAt: Date | null;
+  /** User data is permanently deleted after this timestamp (opt-out + 7 days). */
+  dataDeletionScheduledAt: Date | null;
   awaitingJournal: boolean;
-  awaitingNeedSelection: boolean;
+  awaitingKnockSelection: boolean;
   awaitingOnboardingStep: 'name' | 'timezone' | 'time' | null;
   awaitingQuestConfirm: boolean;
   awaitingQuizAnswer: boolean;
   awaitingDeclarationYes: boolean;
   awaitingReminderTime: boolean;
 
-  // ── NEED Prayer State ──────────────────────────────────────────────────────
+  // ── KNOCK Prayer State ─────────────────────────────────────────────────────
   // Inline (no separate userNeedSessions collection).
-  activeNeedTheme: string;       // themeId or "" when no active NEED session
-  needPrayerIndex: number;       // index within prayerThemes/{themeId}/prayers
+  activeKnockTheme: string;      // themeId or "" when no active KNOCK session
+  knockPrayerIndex: number;      // index within prayerThemes/{themeId}/prayers
 
   // ── Quest State ────────────────────────────────────────────────────────────
   // Inline (no separate questProgress collection).
   questActive: boolean;
-  questWeek: number;             // current week (1-52)
+  questWeek: number;             // synced to global calendar week while questActive
   questVideoIndex: number;       // 0-2 within the week (Mon/Wed/Fri)
   questChaptersLogged: number;   // running total of self-logged chapters
 

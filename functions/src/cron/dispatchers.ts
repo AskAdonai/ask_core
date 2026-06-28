@@ -28,11 +28,20 @@ functions.cloudEvent('minuteTick', async (_cloudEvent: any) => {
   const db = getFirestore();
   const now = new Date();
 
-  const [morningResult, reminderResult, questResult, reconcileResult] = await Promise.allSettled([
+  const [
+    morningResult,
+    reminderResult,
+    questResult,
+    reconcileResult,
+    purgeResult,
+    logsPurgeResult,
+  ] = await Promise.allSettled([
     dispatchMorning(db, now),
     dispatchReminders(db, now),
     dispatchQuest(db, now),
     reconcileStuckLeases(db),
+    purgeOptedOutUsers(db),
+    purgeExpiredLogs(db),
   ]);
 
   // Surface any top-level duty failures
@@ -48,6 +57,12 @@ functions.cloudEvent('minuteTick', async (_cloudEvent: any) => {
   if (reconcileResult.status === 'rejected') {
     logger.error({ error: reconcileResult.reason }, '[minuteTick] Lease reconciliation failed');
   }
+  if (purgeResult.status === 'rejected') {
+    logger.error({ error: purgeResult.reason }, '[minuteTick] Opt-out purge failed');
+  }
+  if (logsPurgeResult.status === 'rejected') {
+    logger.error({ error: logsPurgeResult.reason }, '[minuteTick] Delivery log purge failed');
+  }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -58,30 +73,69 @@ functions.cloudEvent('minuteTick', async (_cloudEvent: any) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function dispatchMorning(db: FirebaseFirestore.Firestore, now: Date): Promise<void> {
+  const startedAt = new Date();
   const snapshot = await db.collection('users')
     .where('paused', '==', false)
     .where('nextSendAt', '<=', now)
-    .select() // Optimize: only fetch document IDs
+    .select()
     .get();
 
   let dispatched = 0;
+  let leaseBlocked = 0;
+  let publishErrors = 0;
   const chunkSize = 50;
-  
+  const { writeDeliveryLog, writeDispatchRun } = await import('../services/deliveryLogService');
+  const { formatDeliveryError } = await import('../utils/resolveReminderSchedule');
+
   for (let i = 0; i < snapshot.docs.length; i += chunkSize) {
     const chunk = snapshot.docs.slice(i, i + chunkSize);
     await Promise.allSettled(chunk.map(async (doc) => {
       const claimed = await claimExecutionLease('users', doc.id);
-      if (claimed) {
-        // Embed a UUID delivery token so the worker can reject Pub/Sub retries.
-        const deliveryId = randomUUID();
+      if (!claimed) {
+        leaseBlocked++;
+        return;
+      }
+
+      const deliveryId = randomUUID();
+      try {
         await safePubSubPublish(MORNING_TOPIC, { userId: doc.id, deliveryId });
         dispatched++;
+        await writeDeliveryLog({
+          userId: doc.id,
+          type: 'MORNING_CARD',
+          status: 'dispatched',
+          stage: 'dispatcher',
+          deliveryId,
+        });
         logger.info({ userId: doc.id, deliveryId }, '[morning] Job dispatched');
+      } catch (error) {
+        publishErrors++;
+        await writeDeliveryLog({
+          userId: doc.id,
+          type: 'MORNING_CARD',
+          status: 'failed',
+          stage: 'dispatcher',
+          deliveryId,
+          error: formatDeliveryError(error),
+        });
+        logger.error({ userId: doc.id, deliveryId, error }, '[morning] Pub/Sub publish failed');
       }
     }));
   }
 
-  if (dispatched > 0) logger.info({ dispatched }, '[morning] Dispatch cycle complete');
+  await writeDispatchRun({
+    duty: 'morning',
+    eligible: snapshot.size,
+    dispatched,
+    leaseBlocked,
+    publishErrors,
+    startedAt,
+    completedAt: new Date(),
+  });
+
+  if (dispatched > 0 || snapshot.size > 0) {
+    logger.info({ eligible: snapshot.size, dispatched, leaseBlocked, publishErrors }, '[morning] Dispatch cycle complete');
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -186,4 +240,22 @@ async function reconcileStuckLeases(db: FirebaseFirestore.Firestore): Promise<vo
   }
 
   logger.info({ released, failed }, '[reconcile] Cycle complete');
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Duty E — Opt-out purge
+// Permanently deletes user accounts whose 7-day grace period has expired.
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function purgeExpiredLogs(db: FirebaseFirestore.Firestore): Promise<void> {
+  const { purgeExpiredDeliveryLogs } = await import('../services/deliveryLogService');
+  const purged = await purgeExpiredDeliveryLogs();
+  if (purged > 0) {
+    logger.info({ purged }, '[minuteTick] Expired delivery logs purged');
+  }
+}
+
+async function purgeOptedOutUsers(db: FirebaseFirestore.Firestore): Promise<void> {
+  const { purgeExpiredOptOuts } = await import('../services/optOutService');
+  await purgeExpiredOptOuts();
 }

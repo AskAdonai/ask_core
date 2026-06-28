@@ -22,8 +22,9 @@ export const createWebhookApp = (): express.Application => {
   // Health check
   app.get('/health', (_req, res) => res.json({ status: 'ok', service: 'ASK WhatsApp Webhook' }));
 
-  // Mount webhook routes
+  // Mount webhook routes (Twilio may be configured with / or /webhook)
   app.use('/', webhookRouter);
+  app.use('/webhook', webhookRouter);
 
   // Global error handler
   app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

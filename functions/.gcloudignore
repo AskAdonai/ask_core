@@ -2,17 +2,36 @@
 node_modules/
 **/node_modules/
 
-# Block ALL .env files — secrets come exclusively from GCP Secret Manager
+# Secrets and local config — runtime env comes from deploy.sh (--env-vars-file + Secret Manager)
 .env
 **/.env
 **/*.env
+.env.yaml
+**/.env.yaml
+.env.example
+**/.env.example
 
-# Block test files
+# Tests and coverage (not used in production)
 **/*.test.ts
 **/*.spec.ts
+test/
+coverage/
 
-# Block dev-only config and logs
+# Dev-only tooling
 *.log
 jest.config.ts
 .eslintrc*
-tsconfig*.json
+
+# One-off local scripts (not Cloud Function entry points)
+seed_*.ts
+seed_*.js
+verify_*.ts
+verify_*.js
+set_cors.ts
+injectSwagger.js
+src/server.ts
+
+# Seed/migration scripts — only morningGreetings.json is imported at runtime
+src/seed/*.ts
+
+# lib/ is produced by `npm run build` before deploy (Cloud Build does not run tsc here)

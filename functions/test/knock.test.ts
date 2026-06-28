@@ -1,13 +1,21 @@
 const sendWhatsAppMessage = jest.fn();
+const sendKnockResponse = jest.fn();
 const update = jest.fn();
 const getJourneyPrayerContent = jest.fn();
-const getNeedPrayerCard = jest.fn();
-const getActiveNeedTheme = jest.fn();
+const getKnockPrayerContent = jest.fn();
+const getActiveKnockTheme = jest.fn();
 const incrementStreak = jest.fn();
 const getUser = jest.fn();
 const setPauseState = jest.fn();
 const saveJournalEntry = jest.fn();
 const setAwaitingJournal = jest.fn();
+const triggerThemeSelection = jest.fn();
+const clearPendingStates = jest.fn().mockResolvedValue(undefined);
+
+jest.mock('../src/webhook/handlers/themeSelectionHandler', () => ({
+  triggerThemeSelection,
+  handleThemeSelection: jest.fn(),
+}));
 
 jest.mock('firebase-admin/firestore', () => ({
   getFirestore: jest.fn(() => ({
@@ -25,16 +33,17 @@ jest.mock('firebase-admin/firestore', () => ({
 
 jest.mock('../src/services/twilioService', () => ({
   sendWhatsAppMessage,
+  sendKnockResponse,
   runWithTwilioResponseContext: (_payload: Record<string, unknown>, fn: () => Promise<unknown>) => fn(),
 }));
 
 jest.mock('../src/services/prayerCardService', () => ({
   getJourneyPrayerContent,
-  getNeedPrayerCard,
+  getKnockPrayerContent,
 }));
 
-jest.mock('../src/services/needSessionService', () => ({
-  getActiveNeedTheme,
+jest.mock('../src/services/knockSessionService', () => ({
+  getActiveKnockTheme,
 }));
 
 jest.mock('../src/services/streakService', () => ({
@@ -44,6 +53,7 @@ jest.mock('../src/services/streakService', () => ({
 jest.mock('../src/services/userService', () => ({
   getUser,
   setPauseState,
+  clearPendingStates,
 }));
 
 jest.mock('../src/services/journalService', () => ({
@@ -51,12 +61,13 @@ jest.mock('../src/services/journalService', () => ({
   setAwaitingJournal,
 }));
 
-import { handleKnock } from '../src/webhook/handlers/knockHandler';
+import { deliverDeclaration } from '../src/webhook/handlers/declarationHandler';
+import * as declarationHandler from '../src/webhook/handlers/declarationHandler';
 import { handleYesDeclaration } from '../src/webhook/handlers/yesHandler';
-import { handleWebhookRequest } from '../src/webhook/webhook';
+import { handleWebhookRequest } from '../src/webhook/webhookRouter';
 import type { User } from '../src/types/schemas';
 
-describe('KNOCK declaration flow', () => {
+describe('SEEK declaration flow', () => {
   const phone = '+15551234567';
   const originalNodeEnv = process.env.NODE_ENV;
   const user: Partial<User> = {
@@ -69,8 +80,8 @@ describe('KNOCK declaration flow', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    getActiveNeedTheme.mockResolvedValue(null);
-    getNeedPrayerCard.mockResolvedValue(null);
+    getActiveKnockTheme.mockResolvedValue(null);
+    getKnockPrayerContent.mockResolvedValue(null);
     getJourneyPrayerContent.mockResolvedValue(null);
     process.env.FIREBASE_PROJECT_ID = 'test-project';
   });
@@ -88,15 +99,13 @@ describe('KNOCK declaration flow', () => {
       },
     });
 
-    await handleKnock(phone, user);
+    await deliverDeclaration(phone, user);
 
-    expect(sendWhatsAppMessage).toHaveBeenCalledWith(
+    expect(sendKnockResponse).toHaveBeenCalledWith(
       phone,
-      expect.stringContaining("Today's declaration:\n\nThe Lord is my shepherd; I shall not want."),
+      'The Lord is my shepherd; I shall not want.',
       ['https://cdn.example.test/declaration.mp3'],
     );
-    expect(sendWhatsAppMessage.mock.calls[0][1]).toContain('Speak it aloud');
-    expect(sendWhatsAppMessage.mock.calls[0][1]).toContain('*YES* — I declare it');
     expect(update).toHaveBeenCalledWith(expect.objectContaining({
       awaitingDeclarationYes: true,
     }));
@@ -136,6 +145,8 @@ describe('KNOCK declaration flow', () => {
     });
 
     const status = jest.fn().mockReturnThis();
+    const end = jest.fn().mockReturnThis();
+    const send = jest.fn();
     const json = jest.fn();
 
     await handleWebhookRequest(
@@ -146,7 +157,7 @@ describe('KNOCK declaration flow', () => {
           ProfileName: 'Test User',
         },
       } as any,
-      { status, json } as any,
+      { status, end, json, send } as any,
     );
 
     expect(incrementStreak).toHaveBeenCalledWith(phone, 'Africa/Lagos');
@@ -154,7 +165,94 @@ describe('KNOCK declaration flow', () => {
       phone,
       expect.stringContaining('Declaration received. Well done, Friend. Your vine grows stronger today. 🌿'),
     );
-    expect(status).toHaveBeenCalledWith(200);
-    expect(json).toHaveBeenCalledWith({ status: 'ok', action: 'declaration_yes' });
+    expect(status).toHaveBeenCalledWith(204);
+    expect(end).toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('routes seek to the declaration flow', async () => {
+    process.env.NODE_ENV = 'production';
+    getUser.mockResolvedValue(user);
+    const deliverSpy = jest.spyOn(declarationHandler, 'deliverDeclaration').mockResolvedValue(undefined);
+
+    const status = jest.fn().mockReturnThis();
+    const end = jest.fn().mockReturnThis();
+    const send = jest.fn();
+
+    await handleWebhookRequest(
+      {
+        body: {
+          From: `whatsapp:${phone}`,
+          Body: 'seek',
+        },
+      } as any,
+      { status, end, send } as any,
+    );
+
+    expect(deliverSpy).toHaveBeenCalledWith(phone, user);
+    expect(status).toHaveBeenCalledWith(204);
+    expect(end).toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+
+    deliverSpy.mockRestore();
+  });
+
+  it('routes knock to the prayer theme menu', async () => {
+    process.env.NODE_ENV = 'production';
+    getUser.mockResolvedValue(user);
+    triggerThemeSelection.mockResolvedValue(undefined);
+
+    const status = jest.fn().mockReturnThis();
+    const end = jest.fn().mockReturnThis();
+    const send = jest.fn();
+
+    await handleWebhookRequest(
+      {
+        body: {
+          From: `whatsapp:${phone}`,
+          Body: 'knock',
+        },
+      } as any,
+      { status, end, send } as any,
+    );
+
+    expect(triggerThemeSelection).toHaveBeenCalledWith(phone, user);
+    expect(status).toHaveBeenCalledWith(204);
+    expect(end).toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it('routes ask even while awaitingDeclarationYes', async () => {
+    process.env.NODE_ENV = 'production';
+    getUser.mockResolvedValue({
+      ...user,
+      awaitingDeclarationYes: true,
+      name: 'Friend',
+      vineStage: 'Rooted',
+      streak: 7,
+    });
+
+    const status = jest.fn().mockReturnThis();
+    const end = jest.fn().mockReturnThis();
+    const send = jest.fn();
+
+    await handleWebhookRequest(
+      {
+        body: {
+          From: `whatsapp:${phone}`,
+          Body: 'Ask',
+        },
+      } as any,
+      { status, end, send } as any,
+    );
+
+    expect(clearPendingStates).toHaveBeenCalledWith(phone);
+    expect(sendWhatsAppMessage).toHaveBeenCalledWith(
+      phone,
+      expect.stringContaining('Your vine is Rooted'),
+    );
+    expect(status).toHaveBeenCalledWith(204);
+    expect(end).toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
   });
 });

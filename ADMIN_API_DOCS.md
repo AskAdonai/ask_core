@@ -5,7 +5,7 @@ This document outlines all the available endpoints for the ASK Bot Administratio
 ## Base URL
 **Production / Deployed Endpoint:**
 ```text
-https://us-central1-whatapp-497611.cloudfunctions.net/adminApi/admin
+https://us-central1-askwhatsappbot.cloudfunctions.net/adminApi/admin
 ```
 
 **Local Development Endpoint:**
@@ -107,3 +107,35 @@ Manage uploaded media assets (images/audio) and their organizational categories.
 | `GET` | `/media/:mediaId` | Get a specific media item |
 | `DELETE`| `/media/:mediaId` | Delete a media item |
 | `POST` | `/media/upload-url` | Generate a pre-signed Cloudflare R2 URL for direct uploads |
+
+## 8. Morning Devotion (`/morning-devotion`)
+Preview and manage the journey morning card grid. Content is stored in `prayerCards` + linked `prayerThemes` prayers; these endpoints compose and validate what the cron worker sends.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/morning-devotion/cards` | List prayer cards with completeness status (optional `?journeyStage=1`) |
+| `GET` | `/morning-devotion/preview` | Preview composed WhatsApp message (`?journeyStage=1&journeyDayIndex=1`) |
+
+**Preview query params:** `name`, `streak`, `vineStage`, `activeKnockTheme`, `knockPrayerIndex` (all optional).
+
+**Editor workflow:** Update card via `PUT /prayer-cards/:cardId`, prayer via `PUT /themes/:themeId/prayers/:prayerId`, then call preview to verify.
+
+## 10. Delivery Logs (`/delivery-logs`)
+Pipeline observability for morning cards, reminders, and other outbound messages. **Not Pub/Sub** — logs are written to Firestore (`deliveryLogs`, `dispatchRuns`) with 30-day auto-expiry; pin entries to keep them longer.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/delivery-logs` | List logs (`?type=MORNING_CARD&status=failed&userId=&since=&limit=`) |
+| `GET` | `/delivery-logs/morning/summary` | Today’s morning stats (`?date=YYYY-MM-DD`) |
+| `GET` | `/delivery-logs/dispatch-runs` | MinuteTick aggregates (`?duty=morning&since=`) |
+| `PATCH` | `/delivery-logs/:logId/pin` | Pin a log entry (skip auto-purge) |
+
+**Morning summary fields:** `eligible`, `dispatched`, `sent`, `failed`, `skipped`, `totalLeaseBlocked`, `recentFailures[]`.
+
+## 11. KNOCK Menu (`/knock-menu`)
+Manage the theme selection menu image shown when users type KNOCK.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/knock-menu` | Get current menu config (`knockMenu/current`) |
+| `PUT` | `/knock-menu` | Update menu image URL and optional instruction caption |

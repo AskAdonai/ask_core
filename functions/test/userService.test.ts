@@ -21,6 +21,7 @@ jest.mock('firebase-admin/firestore', () => ({
 jest.mock('../src/utils/timezone', () => ({
   computeNextSendAt: jest.fn(() => new Date('2026-06-03T08:00:00.000Z')),
   computeNextReminderAt: jest.fn(() => new Date('2026-06-02T20:00:00.000Z')),
+  computeNextQuestAt: jest.fn(() => new Date('2026-06-03T17:00:00.000Z')),
   resolveCountryTimezone: jest.fn(() => 'Africa/Lagos'),
 }));
 

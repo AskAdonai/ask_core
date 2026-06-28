@@ -269,7 +269,12 @@ questRoutes.put('/:weekNumber', async (req: Request, res: Response): Promise<voi
     }
 
     await docRef.set({ ...updates, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-    res.status(200).json({ status: 'success', message: `Quest week ${weekNumberStr} updated` });
+    const updatedDoc = await docRef.get();
+    res.status(200).json({
+      status: 'success',
+      message: `Quest week ${weekNumberStr} updated`,
+      quest: updatedDoc.data(),
+    });
   } catch (error) {
     logger.error({ error }, 'Error updating quest');
     res.status(500).json({ error: 'Internal server error' });

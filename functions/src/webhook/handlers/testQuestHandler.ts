@@ -17,6 +17,7 @@ import {
   formatSaturdayPayload 
 } from '../../utils/questPayloadFormatter';
 import { getCurrentCalendarWeek } from '../../utils/calendarWeek';
+import { respondTwilioOk } from '../../utils/twilioWebhookResponse';
 
 export const handleTestQuest = async (req: Request, res: Response) => {
   const body = req.body?.Body?.toLowerCase()?.trim() || '';
@@ -41,7 +42,7 @@ export const handleTestQuest = async (req: Request, res: Response) => {
 
     if (!doc.exists) {
       await sendWhatsAppMessage(from.replace('whatsapp:', ''), `Week ${weekNumber} data not found in database.`);
-      return res.status(200).send('OK');
+      return respondTwilioOk(res);
     }
 
     const questData = doc.data()!;
@@ -70,7 +71,7 @@ export const handleTestQuest = async (req: Request, res: Response) => {
         break;
     }
 
-    return res.status(200).send('OK');
+    return respondTwilioOk(res);
   } catch (error: any) {
     console.error('Error in testQuestHandler:', error);
     const cleanPhone = from.replace('whatsapp:', '');

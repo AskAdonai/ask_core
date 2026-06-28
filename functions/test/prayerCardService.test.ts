@@ -1,10 +1,10 @@
 import {
   getPrayerCard,
   getPrayerCardForDay,
-  getThemePrayer,
+  getPrayer,
   getJourneyPrayerContent,
-  getNeedPrayerCard,
-  getNeedPrayerContent
+  getKnockPrayerCard,
+  getKnockPrayerContent
 } from '../src/services/prayerCardService';
 
 const mockGet = jest.fn();
@@ -74,10 +74,10 @@ describe('prayerCardService', () => {
     });
   });
 
-  describe('getThemePrayer', () => {
+  describe('getPrayer', () => {
     it('returns null if prayer doc does not exist', async () => {
       mockGet.mockResolvedValueOnce({ exists: false });
-      const prayer = await getThemePrayer('healing', 'prayer-1');
+      const prayer = await getPrayer('healing', 'prayer-1');
       expect(prayer).toBeNull();
     });
 
@@ -86,7 +86,7 @@ describe('prayerCardService', () => {
         exists: true,
         data: () => ({ title: 'Healing Prayer' }),
       });
-      const prayer = await getThemePrayer('healing', 'prayer-1');
+      const prayer = await getPrayer('healing', 'prayer-1');
       expect(prayer?.title).toBe('Healing Prayer');
     });
   });
@@ -136,10 +136,10 @@ describe('prayerCardService', () => {
     });
   });
 
-  describe('getNeedPrayerCard', () => {
+  describe('getKnockPrayerCard', () => {
     it('returns null if no query match', async () => {
       mockGet.mockResolvedValueOnce({ empty: true });
-      const prayer = await getNeedPrayerCard('finances', 1);
+      const prayer = await getKnockPrayerCard('finances', 1);
       expect(prayer).toBeNull();
     });
 
@@ -148,12 +148,12 @@ describe('prayerCardService', () => {
         empty: false,
         docs: [{ data: () => ({ title: 'Finance Prayer' }) }],
       });
-      const prayer = await getNeedPrayerCard('finances', 1);
+      const prayer = await getKnockPrayerCard('finances', 1);
       expect(prayer?.title).toBe('Finance Prayer');
     });
   });
 
-  describe('getNeedPrayerContent', () => {
+  describe('getKnockPrayerContent', () => {
     it('translates 0-based index to 1-based index', async () => {
       // 0 -> 1
       mockGet.mockResolvedValueOnce({
@@ -161,14 +161,14 @@ describe('prayerCardService', () => {
         docs: [{ data: () => ({ title: 'First Prayer' }) }],
       });
       
-      const result = await getNeedPrayerContent('finances', 0);
+      const result = await getKnockPrayerContent('finances', 0);
       expect(result?.prayer.title).toBe('First Prayer');
       expect(mockWhere).toHaveBeenCalledWith('index', '==', 1);
     });
 
     it('returns null if not found', async () => {
       mockGet.mockResolvedValueOnce({ empty: true });
-      const result = await getNeedPrayerContent('finances', 1);
+      const result = await getKnockPrayerContent('finances', 1);
       expect(result).toBeNull();
     });
   });

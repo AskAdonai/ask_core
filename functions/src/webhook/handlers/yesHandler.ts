@@ -32,9 +32,13 @@ export const handleYesDeclaration = async (
   const { incremented, streak, vineStage, alreadyDeclaredToday } =
     await incrementStreak(phone, user.timezone ?? 'UTC');
 
-  // Duplicate / spam guard — already declared today, do nothing
+  // Duplicate / spam guard — already declared today
   if (alreadyDeclaredToday) {
     logger.info({ phone }, 'Duplicate YES ignored — already declared today');
+    await sendWhatsAppMessage(
+      phone,
+      `You've already made today's declaration, ${user.name || 'Friend'}. Your streak stands. Reply *HELP* to see what else you can do. 🙏`
+    );
     return;
   }
 
@@ -63,7 +67,7 @@ export const handleYesDeclaration = async (
 
   // ── Build confirmation message ─────────────────────────────────────────────
   const name = user.name || 'Friend';
-  let msg = `Declaration received. Well done, ${name}. Your vine grows stronger today. 🌿\n\n• *SEEK* — today's word\n• *JOURNAL* — reflect\n• *VINE* — my growth`;
+  let msg = `Declaration received. Well done, ${name}. Your vine grows stronger today. 🌿\n\n• *JOURNAL* — reflect in writing\n• *VINE* — check my growth`;
 
   // ── Milestone celebrations (spec: streaks 7, 14, 21, 30, 60, 100) ─────────
   if (incremented) {

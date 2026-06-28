@@ -1,17 +1,14 @@
 import { DateTime } from 'luxon';
 
 /**
- * Calculates the current quest week based on the global calendar track.
- * Currently uses the standard ISO week of the year (1-53).
- * 
- * If the client decides that "Week 1" starts on a specific launch date 
- * rather than January 1st, this function can be easily updated to calculate 
- * the week offset from that launch date instead.
+ * Global quest cohort week (ISO calendar week, 1–53 in the user's timezone).
+ *
+ * All active questers receive the same `questContent/{weekNumber}` document.
+ * Admins map curriculum onto the calendar by seeding week 1 content at the
+ * programme launch week (see `SEED_QUEST_START_WEEK` in seed_quests.ts).
+ * New users join the ongoing week — they do not start an individual Week 1 track.
  */
 export const getCurrentCalendarWeek = (timezone: string = 'UTC'): number => {
   const localNow = DateTime.now().setZone(timezone);
-  
-  // localWeekNumber returns the ISO week of the year (1-53) based on the local timezone
-  // For most years, this bounds perfectly to 1-52.
   return localNow.localWeekNumber;
 };

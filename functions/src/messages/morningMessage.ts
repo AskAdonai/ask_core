@@ -2,71 +2,171 @@ import { getMorningGreetingFrame } from '../utils/spiritualTitles';
 import type { ResolvedPrayerContent } from '../services/prayerCardService';
 import type { User } from '../types/User';
 
+const isPlaceholderUrl = (url?: string): boolean =>
+  !url || url.includes('example.com');
+
 /**
- * Generates the morning message string based on the user's progress and the day's content.
- * 
- * Morning message anatomy:
- * - Time-sensitive greeting
- * - Personalised spiritual address (Title, Promise, or God's Voice based on day)
- * - Vine stage and streak
- * - Theme for the day
- * - Anchor verse
- * - Voice note (handled outside this function via media array)
- * - Call to action
+ * Generates the morning devotion message sent by the morning cron worker.
+ * Includes full prayer text and verse, plus listen/video links for users on the go.
  */
 export interface MorningMessagePayload {
   text: string;
-  cloudflareMediaId?: string; // To be updated later with Cloudflare R2 Media ID
-  audioUrl?: string;          // Resolved public URL from Cloudflare
+  cloudflareMediaId?: string;
+  videoUrl?: string;
+  audioUrl?: string;
 }
 
-export const buildMorningMessage = (user: User, content: ResolvedPrayerContent | null): MorningMessagePayload => {
+export const readActiveThemeId = (user: Partial<User>): string =>
+  (user.activeKnockTheme ?? '').trim();
+
+const buildSpiritualAddress = (name: string, streak: number): string => {
+  const frame = getMorningGreetingFrame(streak);
+  if (frame.type === 'gods_voice') {
+    return `${name} "${frame.text}"`;
+  }
+  return `${name} ${frame.text}`;
+};
+
+const resolveReflection = (
+  journeyContent: ResolvedPrayerContent | null,
+  themeContent?: ResolvedPrayerContent | null,
+): string =>
+  journeyContent?.prayer?.reflectionQuestion ||
+  journeyContent?.card?.journalPrompt ||
+  themeContent?.prayer?.reflectionQuestion ||
+  'What is one thing God is speaking to you in this season?';
+
+const resolveDevotionLinks = (
+  journeyContent: ResolvedPrayerContent | null,
+  themeContent?: ResolvedPrayerContent | null,
+): { videoUrl?: string; audioUrl?: string } => {
+  const card = journeyContent?.card;
+  const journeyPrayer = journeyContent?.prayer;
+  const themePrayer = themeContent?.prayer;
+
+  const videoUrl = !isPlaceholderUrl(card?.devotionLink) ? card!.devotionLink : undefined;
+
+  let audioUrl: string | undefined;
+  if (!isPlaceholderUrl(card?.morningVoiceNoteUrl)) {
+    audioUrl = card!.morningVoiceNoteUrl;
+  } else if (!isPlaceholderUrl(journeyPrayer?.declarationAudioUrl)) {
+    audioUrl = journeyPrayer!.declarationAudioUrl;
+  } else if (!isPlaceholderUrl(themePrayer?.declarationAudioUrl)) {
+    audioUrl = themePrayer!.declarationAudioUrl;
+  }
+
+  return { videoUrl, audioUrl };
+};
+
+const buildDevotionLinksSection = (audioUrl?: string, videoUrl?: string): string => {
+  let section =
+    `Here is today's devotion and prayer\n` +
+    `Here is a link to listen and read along to today's devotion.\n`;
+
+  if (audioUrl) {
+    section += `${audioUrl}\n`;
+  }
+
+  if (videoUrl) {
+    section += `If you prefer a video : ${videoUrl}\n`;
+  }
+
+  return section;
+};
+
+const buildReflectionSection = (reflection: string): string =>
+  `\nReflect: ${reflection}\n` +
+  `Sit with that question today. You don't need to answer it now.\n\n`;
+
+export const morningDeclarationCta =
+  `When you are ready for our scripture declaration send *SEEK* — make today's declaration / *JOURNAL* — reflect in writing / *VINE* — check my growth`;
+
+export const morningDevotionButtonFooter =
+  `• *SEEK* — make today's declaration\n` +
+  `• *JOURNAL* — reflect in writing\n` +
+  `• *VINE* — check my growth`;
+
+export const buildMorningMessage = (
+  user: User,
+  journeyContent: ResolvedPrayerContent | null,
+  themeContent?: ResolvedPrayerContent | null,
+): MorningMessagePayload => {
   const name = user.name || 'Friend';
   const streak = user.streak ?? 0;
   const frame = getMorningGreetingFrame(streak);
   const vineStage = user.vineStage || 'Grafted';
+  const spiritualAddress = buildSpiritualAddress(name, streak);
+  const reflection = resolveReflection(journeyContent, themeContent);
+  const { videoUrl, audioUrl } = resolveDevotionLinks(journeyContent, themeContent);
 
-  const greeting = `Good morning`;
+  const journeyPrayer = journeyContent?.prayer;
+  const themePrayer = themeContent?.prayer;
+  const displayPrayer = journeyPrayer ?? themePrayer;
 
-  let spiritualAddress = '';
-  if (frame.type === 'title') {
-    spiritualAddress = `${name} ${frame.text}`;
-  } else if (frame.type === 'promise') {
-    spiritualAddress = `${name} ${frame.text}`;
-  } else if (frame.type === 'gods_voice') {
-    spiritualAddress = `${name} "${frame.text}"`;
-  }
+  const header =
+    `Good morning\n` +
+    `${spiritualAddress}\n\n` +
+    `You are ${vineStage}.\n` +
+    `Streak: ${streak} days.\n\n`;
 
-  const vineAndStreak = `You are ${vineStage}. Streak: ${streak} days.`;
-
-  // Placeholders for Cloudflare R2 integration
-  let cloudflareMediaId: string | undefined = frame.audioId;
-  let audioUrl: string | undefined;
-
-  if (!content || !content.prayer) {
+  if (!displayPrayer) {
     return {
-      text: `${greeting}\n${spiritualAddress}\n${vineAndStreak}\n\nIt's time for your daily devotional. Send *SEEK* to read today's word. 🙏`,
-      cloudflareMediaId,
+      text:
+        header +
+        buildDevotionLinksSection(audioUrl, videoUrl) +
+        buildReflectionSection(reflection) +
+        morningDeclarationCta,
+      videoUrl,
+      audioUrl,
+      cloudflareMediaId: frame.audioId,
     };
   }
 
-  const { prayer, card } = content;
-  // If a prayer title isn't set, default to capitalised themeId
-  const themePhrase = prayer.title || (content.themeId.charAt(0).toUpperCase() + content.themeId.slice(1));
-  const anchorVerse = `_${prayer.verse}_\n— ${prayer.reference}`;
-  const callToAction = `Send *SEEK* to read today's word.`;
+  const themeId = journeyContent?.themeId || themeContent?.themeId || 'today';
+  const themePhrase =
+    displayPrayer.title ||
+    themeId.charAt(0).toUpperCase() + themeId.slice(1);
 
-  // If the frame explicitly defines an audioId, we assume it's the direct URL for now.
-  // When Cloudflare integration is complete, this is where we will resolve the ID to a public URL.
-  if (frame.audioId) {
-    audioUrl = frame.audioId;
-  } else if (card && card.morningVoiceNoteUrl) {
-    audioUrl = card.morningVoiceNoteUrl;
+  const anchorVerse = displayPrayer.verse
+    ? `_${displayPrayer.verse}_\n— ${displayPrayer.reference}`
+    : '';
+
+  let text = header + `*${themePhrase}*\n\n`;
+
+  if (anchorVerse) {
+    text += `${anchorVerse}\n\n`;
   }
 
+  text += `${displayPrayer.prayerText}\n\n`;
+
+  const showAdditionalThemePrayer =
+    themePrayer &&
+    journeyPrayer &&
+    themePrayer !== journeyPrayer;
+
+  if (showAdditionalThemePrayer) {
+    const themeAudio = !isPlaceholderUrl(themePrayer.declarationAudioUrl)
+      ? themePrayer.declarationAudioUrl
+      : undefined;
+
+    text +=
+      `*Additional prayer — ${themePrayer.title}*\n\n` +
+      `${themePrayer.prayerText}\n\n`;
+
+    if (themeAudio) {
+      text += `For audio: ${themeAudio}\n\n`;
+    }
+  }
+
+  text +=
+    buildDevotionLinksSection(audioUrl, videoUrl) +
+    buildReflectionSection(reflection) +
+    morningDeclarationCta;
+
   return {
-    text: `${greeting}\n${spiritualAddress}\n${vineAndStreak}\n\n*${themePhrase}*\n\n${anchorVerse}\n\n${callToAction}`,
+    text,
+    videoUrl,
     audioUrl,
-    cloudflareMediaId,
+    cloudflareMediaId: frame.audioId,
   };
 };

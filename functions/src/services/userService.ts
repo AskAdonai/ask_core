@@ -73,15 +73,17 @@ export const createUser = async (
     eveningReminderSentToday: false,
     lastCheckinSent: '',
     paused: false,
+    optOutRequestedAt: null,
+    dataDeletionScheduledAt: null,
     awaitingJournal: false,
-    awaitingNeedSelection: false,
+    awaitingKnockSelection: false,
     awaitingOnboardingStep: null,
     awaitingQuestConfirm: false,
     awaitingQuizAnswer: false,
     awaitingDeclarationYes: false,
     awaitingReminderTime: false,
-    activeNeedTheme: '',
-    needPrayerIndex: 0,
+    activeKnockTheme: '',
+    knockPrayerIndex: 0,
     questActive: false,
     questWeek: 1,
     questVideoIndex: 0,
@@ -163,4 +165,71 @@ export const updateUserFields = async (
   const db = getFirestore();
   const userId = phone.replace('+', '');
   await db.collection('users').doc(userId).update({ ...fields, updatedAt: new Date() });
+};
+
+/** Clears interactive awaiting-* flags so the user can send commands again. */
+export const clearPendingStates = async (phone: string): Promise<void> => {
+  const db = getFirestore();
+  const userId = phone.replace('+', '');
+  await db.collection('users').doc(userId).update({
+    awaitingDeclarationYes: false,
+    awaitingKnockSelection: false,
+    awaitingJournal: false,
+    awaitingQuestConfirm: false,
+    awaitingQuizAnswer: false,
+    awaitingReminderTime: false,
+    updatedAt: new Date(),
+  });
+};
+
+const parseReminderParts = (reminderTime?: string): { hour: number; minute: number } => {
+  const [hStr, mStr] = (reminderTime || '06:00').split(':');
+  return {
+    hour: parseInt(hStr, 10) || 6,
+    minute: parseInt(mStr, 10) || 0,
+  };
+};
+
+/** Resets journey, session, and scheduler runtime fields to a fresh-user baseline. */
+export const buildDefaultUserState = (user: Partial<User>): Partial<User> => {
+  const timezone = user.timezone || 'UTC';
+  const { hour, minute } = parseReminderParts(user.reminderTime || user.reminderTimeLocal);
+
+  return {
+    lockedUntil: null,
+    journeyStage: 1,
+    journeyDayIndex: 1,
+    vineStage: 'Grafted',
+    streak: 0,
+    lastActiveDate: '',
+    declarationsToday: 0,
+    journaledToday: false,
+    eveningReminderSentToday: false,
+    lastCheckinSent: '',
+    paused: false,
+    optOutRequestedAt: null,
+    dataDeletionScheduledAt: null,
+    awaitingJournal: false,
+    awaitingKnockSelection: false,
+    awaitingOnboardingStep: null,
+    awaitingQuestConfirm: false,
+    awaitingQuizAnswer: false,
+    awaitingDeclarationYes: false,
+    awaitingReminderTime: false,
+    activeKnockTheme: '',
+    knockPrayerIndex: 0,
+    questActive: false,
+    questWeek: 1,
+    questVideoIndex: 0,
+    questChaptersLogged: 0,
+    currentQuizQuestionIndex: 0,
+    currentQuizScore: 0,
+    lastMorningDeliveryId: null,
+    lastReminderDeliveryId: null,
+    lastQuestDeliveryId: null,
+    nextSendAt: computeNextSendAt(timezone, hour, minute),
+    nextReminderAt: computeNextReminderAt(timezone),
+    nextQuestAt: computeNextQuestAt(timezone),
+    updatedAt: new Date(),
+  };
 };

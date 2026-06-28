@@ -1,6 +1,4 @@
-import { Router, Request, Response, NextFunction } from 'express';
-import { getAuth } from 'firebase-admin/auth';
-import pino from 'pino';
+import { Router } from 'express';
 
 import userRoutes from './routes/userRoutes';
 import themeRoutes from './routes/themeRoutes';
@@ -9,29 +7,31 @@ import mediaRoutes from './routes/mediaRoutes';
 import dailyDeclarationRoutes from './routes/dailyDeclarationRoutes';
 import questRoutes from './routes/questRoutes';
 import prayerCardRoutes from './routes/prayerCardRoutes';
+import knockMenuRoutes from './routes/knockMenuRoutes';
+import morningDevotionRoutes from './routes/morningDevotionRoutes';
+import deliveryLogRoutes from './routes/deliveryLogRoutes';
+import statsRoutes from './routes/statsRoutes';
+import authRoutes from './routes/authRoutes';
+import staffRoutes from './routes/staffRoutes';
+import { requireAuth } from './middleware/authMiddleware';
 
-const logger = pino();
 const adminRouter = Router();
 
-// Middleware to verify Firebase Auth JWT
-const requireAuth = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-  // === DEV OVERRIDE: Auth disabled for now ===
-  (req as any).user = { uid: 'dev-bypass-admin', email: 'dev@bypass.com' };
-  next();
-  return;
-  // ===========================================
-};
+adminRouter.use('/auth', authRoutes);
 
-// Apply auth middleware to all admin routes
 adminRouter.use(requireAuth);
 
-// Mount feature routers
+adminRouter.use('/staff', staffRoutes);
 adminRouter.use('/users', userRoutes);
 adminRouter.use('/themes', themeRoutes);
 adminRouter.use('/config', configRoutes);
 adminRouter.use('/daily-declarations', dailyDeclarationRoutes);
 adminRouter.use('/quests', questRoutes);
 adminRouter.use('/prayer-cards', prayerCardRoutes);
-adminRouter.use('/', mediaRoutes); // handles /media and /media-categories
+adminRouter.use('/knock-menu', knockMenuRoutes);
+adminRouter.use('/morning-devotion', morningDevotionRoutes);
+adminRouter.use('/delivery-logs', deliveryLogRoutes);
+adminRouter.use('/stats', statsRoutes);
+adminRouter.use('/', mediaRoutes);
 
 export default adminRouter;

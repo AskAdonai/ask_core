@@ -42,7 +42,7 @@ gcloud auth login
 
 2. **Set the active project**:
 ```bash
-gcloud config set project whatapp-497611
+gcloud config set project askwhatsappbot
 ```
 
 3. **Deploy the GCP infrastructure (Pub/Sub, Scheduler, Cloud Functions)**:
