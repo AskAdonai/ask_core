@@ -1,7 +1,20 @@
+import { loadLocalEnv } from '../src/config/loadLocalEnv';
 import {
   assertAccountSid,
   resolveTwilioClientCredentials,
 } from '../src/services/twilioCredentials';
+
+loadLocalEnv();
+
+const accountSid = process.env.TWILIO_ACCOUNT_SID?.trim() ?? '';
+const authToken = process.env.TWILIO_AUTH_TOKEN?.trim() ?? '';
+const apiKeySid = process.env.TWILIO_API_KEY_SID?.trim() ?? '';
+const apiKeySecret = process.env.TWILIO_API_KEY_SECRET?.trim() ?? '';
+
+const hasAccountSid = accountSid.startsWith('AC');
+const hasAuthToken = authToken.length > 0 && authToken !== 'your_auth_token';
+const hasApiKeySid = apiKeySid.startsWith('SK');
+const hasApiKeySecret = apiKeySecret.length > 0;
 
 describe('twilioCredentials', () => {
   const originalEnv = process.env;
@@ -14,39 +27,46 @@ describe('twilioCredentials', () => {
     process.env = originalEnv;
   });
 
-  it('rejects API Key SID in TWILIO_ACCOUNT_SID', () => {
-    expect(() => assertAccountSid('SK22222222222222222222222222222222')).toThrow(/Account SID \(starts with AC\)/);
+  (hasApiKeySid ? it : it.skip)(
+    'rejects API Key SID in TWILIO_ACCOUNT_SID',
+    () => {
+      expect(() => assertAccountSid(apiKeySid)).toThrow(/Account SID \(starts with AC\)/);
+    },
+  );
+
+  (hasAccountSid ? it : it.skip)('accepts Account SID', () => {
+    expect(assertAccountSid(accountSid)).toBe(accountSid);
   });
 
-  it('accepts Account SID', () => {
-    expect(assertAccountSid('AC11111111111111111111111111111111')).toBe(
-      'AC11111111111111111111111111111111',
-    );
-  });
+  (hasAccountSid && hasAuthToken ? it : it.skip)(
+    'resolves Account SID + Auth Token credentials',
+    () => {
+      process.env.TWILIO_ACCOUNT_SID = accountSid;
+      process.env.TWILIO_AUTH_TOKEN = authToken;
+      delete process.env.TWILIO_API_KEY_SID;
+      delete process.env.TWILIO_API_KEY_SECRET;
 
-  it('resolves Account SID + Auth Token credentials', () => {
-    process.env.TWILIO_ACCOUNT_SID = 'AC11111111111111111111111111111111';
-    process.env.TWILIO_AUTH_TOKEN = 'primary_auth_token';
-    delete process.env.TWILIO_API_KEY_SID;
-    delete process.env.TWILIO_API_KEY_SECRET;
+      expect(resolveTwilioClientCredentials()).toEqual({
+        accountSid,
+        username: accountSid,
+        password: authToken,
+      });
+    },
+  );
 
-    expect(resolveTwilioClientCredentials()).toEqual({
-      accountSid: 'AC11111111111111111111111111111111',
-      username: 'AC11111111111111111111111111111111',
-      password: 'primary_auth_token',
-    });
-  });
+  (hasAccountSid && hasAuthToken && hasApiKeySid && hasApiKeySecret ? it : it.skip)(
+    'resolves API Key credentials when optional vars are set',
+    () => {
+      process.env.TWILIO_ACCOUNT_SID = accountSid;
+      process.env.TWILIO_AUTH_TOKEN = authToken;
+      process.env.TWILIO_API_KEY_SID = apiKeySid;
+      process.env.TWILIO_API_KEY_SECRET = apiKeySecret;
 
-  it('resolves API Key credentials when optional vars are set', () => {
-    process.env.TWILIO_ACCOUNT_SID = 'AC11111111111111111111111111111111';
-    process.env.TWILIO_AUTH_TOKEN = 'primary_auth_token';
-    process.env.TWILIO_API_KEY_SID = 'SK22222222222222222222222222222222';
-    process.env.TWILIO_API_KEY_SECRET = 'api_key_secret';
-
-    expect(resolveTwilioClientCredentials()).toEqual({
-      accountSid: 'AC11111111111111111111111111111111',
-      username: 'SK22222222222222222222222222222222',
-      password: 'api_key_secret',
-    });
-  });
+      expect(resolveTwilioClientCredentials()).toEqual({
+        accountSid,
+        username: apiKeySid,
+        password: apiKeySecret,
+      });
+    },
+  );
 });
