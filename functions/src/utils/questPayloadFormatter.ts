@@ -14,6 +14,7 @@ export const formatMondayPayload = (user: any, weekData: any): QuestMondayPayloa
     mondayEncouragement: days.monday?.mondayEncouragement || '',
     readingPortion: days.monday?.readingPortion || '',
     videoLink: days.monday?.videoLink || '',
+    coverPic: weekData.introImageUrl || '',
   };
 };
 

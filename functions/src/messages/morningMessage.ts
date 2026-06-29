@@ -81,10 +81,35 @@ const buildReflectionSection = (reflection: string): string =>
 export const morningDeclarationCta =
   `When you are ready for our scripture declaration send *SEEK* — make today's declaration / *JOURNAL* — reflect in writing / *VINE* — check my growth`;
 
+/** Quick-reply button labels (≤20 chars, no _ * ~ { } or newlines). */
+export const morningDevotionQuickActions = {
+  seek: 'Seek',
+  journal: 'Journal',
+  vine: 'Vine',
+} as const;
+
 export const morningDevotionButtonFooter =
-  `• *SEEK* — make today's declaration\n` +
-  `• *JOURNAL* — reflect in writing\n` +
-  `• *VINE* — check my growth`;
+  `• *${morningDevotionQuickActions.seek}* — make today's declaration\n` +
+  `• *${morningDevotionQuickActions.journal}* — reflect in writing\n` +
+  `• *${morningDevotionQuickActions.vine}* — check my growth`;
+
+/**
+ * Strips WhatsApp-forbidden chars from text injected into template variable {{1}}.
+ * Composer uses *bold* and _italic_ — fine for plain-text fallback, not for template vars.
+ */
+export const sanitizeMorningBodyForWhatsAppTemplate = (body: string): string =>
+  body
+    .replace(/[*_~{}]/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+
+/**
+ * Twilio Content Template variables for the morning card.
+ * Only {{1}} is variable — button labels are fixed in the template (WhatsApp rule).
+ */
+export const buildMorningTemplateVariables = (body: string): Record<string, string> => ({
+  '1': sanitizeMorningBodyForWhatsAppTemplate(body),
+});
 
 export const buildMorningMessage = (
   user: User,
@@ -169,4 +194,22 @@ export const buildMorningMessage = (
     audioUrl,
     cloudflareMediaId: frame.audioId,
   };
+};
+
+/**
+ * Morning card body for Twilio Content Template {{1}}.
+ * Same as buildMorningMessage but omits morningDeclarationCta — quick-reply buttons cover that.
+ */
+export const buildMorningTemplateBody = (
+  user: User,
+  journeyContent: ResolvedPrayerContent | null,
+  themeContent?: ResolvedPrayerContent | null,
+): MorningMessagePayload => {
+  const payload = buildMorningMessage(user, journeyContent, themeContent);
+  const ctaSuffix = morningDeclarationCta;
+  const text = payload.text.endsWith(ctaSuffix)
+    ? payload.text.slice(0, -ctaSuffix.length).trimEnd()
+    : payload.text;
+
+  return { ...payload, text };
 };

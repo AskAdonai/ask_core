@@ -7,7 +7,7 @@ export const VALID_KEYWORDS = [
   'stop', 'optout', 'unsubscribe', 
   'quest', 'watch', 'log', 'quiz', 'progress', 'unquest', 'leavequest',
   'testmonday', 'testtuesday', 'testwednesday',
-  'testthursday', 'testfriday', 'testsaturday'
+  'testthursday', 'testfriday', 'testsaturday', 'testmorning'
 ];
 
 /** 

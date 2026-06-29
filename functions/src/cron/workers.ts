@@ -87,7 +87,7 @@ functions.cloudEvent('processSendWorker', async (cloudEvent: any) => {
     }
 
     const { getJourneyPrayerContent, getKnockPrayerContent } = await import('../services/prayerCardService');
-    const { buildMorningMessage, readActiveThemeId } = await import('../messages/morningMessage');
+    const { buildMorningTemplateBody, readActiveThemeId } = await import('../messages/morningMessage');
     const { sendMorningDevotionMessage } = await import('../services/twilioService');
 
     const journeyContent = await getJourneyPrayerContent(user.journeyStage ?? 1, user.journeyDayIndex ?? 1);
@@ -96,7 +96,7 @@ functions.cloudEvent('processSendWorker', async (cloudEvent: any) => {
       ? await getKnockPrayerContent(activeThemeId, user.knockPrayerIndex ?? 0)
       : null;
 
-    const { text: msgBody } = buildMorningMessage(user as any, journeyContent, themeContent);
+    const { text: msgBody } = buildMorningTemplateBody(user as any, journeyContent, themeContent);
     const imageUrl = journeyContent?.card?.imageUrl;
 
     const twilioSid = await sendMorningDevotionMessage(user.phone, msgBody, imageUrl);
@@ -294,6 +294,7 @@ functions.cloudEvent('processQuestWorker', async (cloudEvent: any) => {
               mondayEncouragement: todayData.mondayEncouragement || '',
               readingPortion: todayData.readingPortion || '',
               videoLink: todayData.videoLink || '',
+              coverPic: content.introImageUrl || '',
             });
 
           } else if (todayName === 'tuesday') {

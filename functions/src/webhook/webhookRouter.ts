@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { handleTestQuest } from './handlers/testQuestHandler';
+import { handleTestMorning } from './handlers/testMorningHandler';
 import { getUser, setPauseState, clearPendingStates, updateUserFields } from '../services/userService';
 import { saveJournalEntry, setAwaitingJournal } from '../services/journalService';
 import { sendWhatsAppMessage } from '../services/twilioService';
@@ -153,7 +154,10 @@ export const handleWebhookRequest = async (req: Request, res: Response) => {
     return res.status(400).send('No phone number provided');
   }
 
-  // 1. Intercept test quest commands
+  // 1. Intercept test commands (same path as production workers, no scheduler)
+  if (body === 'testmorning') {
+    return handleTestMorning(req, res);
+  }
   if (/^test(monday|tuesday|wednesday|friday|saturday)/.test(body)) {
     return handleTestQuest(req, res);
   }
