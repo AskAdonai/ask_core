@@ -4,42 +4,39 @@ import {
 } from '../messages/morningMessage';
 
 /**
- * Twilio Content Template: ask_morning_devotion
+ * Twilio Content Template: ask_morning_devotion_card
  *
  * ── Twilio Console submission (duplicate template if retrying) ──────────────
  *
- * 1. Type: Quick Reply
- * 2. Body (exact):
- *      ASK Daily Devotion
+ * Use content type: `twilio/card` (WhatsApp supports media + quick replies).
  *
- *      {{1}}
+ * Variables:
+ *  - {{1}}: devotion body text
+ *  - {{2}}: image path suffix (after domain) e.g. "uploads/devotion/stage1/day1/image.png"
  *
- *      Choose an action below:
- * 3. Button 1 title: Seek        (NOT the sample body — one word only)
- * 4. Button 2 title: Journal
- * 5. Button 3 title: Vine
- * 6. Sample for {{1}} only: paste morningDevotionApprovalSample (one line below)
+ * NOTE: WhatsApp drops `body` for twilio/card; put all text in `title`.
  *
  * "Reply Title" errors mean a BUTTON field has bad chars — never paste the
  * devotion text into button titles. Buttons cannot contain: _ * ~ { } or newlines.
  *
  * {{1}} = runtime composed card from morningMessage.ts (sanitized at send time).
  */
-export const morningDevotionTemplateBody =
+export const morningDevotionCardTitle =
   'ASK Daily Devotion\n\n{{1}}\n\nChoose an action below:';
 
 export const morningDevotionContentTemplate = {
-  friendly_name: 'ask_morning_devotion',
+  friendly_name: 'ask_morning_devotion_card',
   language: 'en',
   types: {
-    'twilio/quick-reply': {
-      body: morningDevotionTemplateBody,
+    'twilio/card': {
+      title: morningDevotionCardTitle,
+      media: ['https://s3.askadonai.com/{{2}}'],
       actions: [
-        { title: morningDevotionQuickActions.seek, id: 'seek' },
-        { title: morningDevotionQuickActions.journal, id: 'journal' },
-        { title: morningDevotionQuickActions.vine, id: 'vine' },
+        { type: 'QUICK_REPLY', title: morningDevotionQuickActions.seek, id: 'seek' },
+        { type: 'QUICK_REPLY', title: morningDevotionQuickActions.journal, id: 'journal' },
+        { type: 'QUICK_REPLY', title: morningDevotionQuickActions.vine, id: 'vine' },
       ],
-    },
+    } as any,
   },
 } as const;
 
@@ -55,6 +52,7 @@ export const morningDevotionSampleBody = morningDevotionApprovalSample;
 
 export const morningDevotionSampleVariables = buildMorningTemplateVariables(
   morningDevotionApprovalSample,
+  'https://s3.askadonai.com/uploads/devotion/stage1/day1/image.png',
 );
 
 export const morningDevotionButtonLabels = morningDevotionQuickActions;

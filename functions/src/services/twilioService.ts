@@ -601,7 +601,11 @@ export const sendMorningDevotionMessage = async (
     buildMorningTemplateVariables,
     morningDeclarationCta,
   } = await import('../messages/morningMessage');
-  const contentSid = getContentSid('TWILIO_CONTENT_SID_MORNING_DEVOTION');
+  // Legacy quick-reply template SID (no embedded media)
+  const legacyQuickReplySid = getContentSid('TWILIO_CONTENT_SID_MORNING_DEVOTION');
+  // Preferred template SID (twilio/card) that embeds the image header.
+  const cardSid = getContentSid('TWILIO_CONTENT_SID_MORNING_DEVOTION_CARD');
+  const contentSid = cardSid ?? legacyQuickReplySid;
 
   // Strip text CTA if caller passed full buildMorningMessage output
   const templateBody = body.endsWith(morningDeclarationCta)
@@ -631,18 +635,21 @@ export const sendMorningDevotionMessage = async (
     const from = `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`;
     const toAddress = `whatsapp:${to}`;
 
+    // If we're using the legacy quick-reply template (no embedded media), avoid
+    // trying to send image+buttons as one WhatsApp message (not supported).
+    if (!cardSid && mediaUrl) {
+      await sendWhatsAppMessage(to, "Today's devotion image:", mediaUrl);
+    }
+
     const message = await withTypingIndicator(() => client.messages.create(withStatusCallback({
       from,
       to: toAddress,
       contentSid,
-      contentVariables: JSON.stringify(buildMorningTemplateVariables(templateBody)),
+      contentVariables: JSON.stringify(buildMorningTemplateVariables(templateBody, imageUrl)),
     } as any)), fallbackBody);
 
     if (attachmentAudio) {
       await sendWhatsAppMessage(to, "Listen along to today's devotion:", [attachmentAudio]);
-    }
-    if (mediaUrl) {
-      await sendWhatsAppMessage(to, "Today's devotion image:", mediaUrl);
     }
 
     logger.info(

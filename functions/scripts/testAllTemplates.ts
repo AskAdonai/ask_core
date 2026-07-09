@@ -31,9 +31,9 @@ type TemplateCase = {
 
 const templates: TemplateCase[] = [
   {
-    label: 'Morning devotion (quick-reply)',
-    envKey: 'TWILIO_CONTENT_SID_MORNING_DEVOTION',
-    contentSid: process.env.TWILIO_CONTENT_SID_MORNING_DEVOTION,
+    label: 'Morning devotion (card)',
+    envKey: 'TWILIO_CONTENT_SID_MORNING_DEVOTION_CARD',
+    contentSid: process.env.TWILIO_CONTENT_SID_MORNING_DEVOTION_CARD || process.env.TWILIO_CONTENT_SID_MORNING_DEVOTION,
     contentVariables: morningDevotionSampleVariables,
   },
   {

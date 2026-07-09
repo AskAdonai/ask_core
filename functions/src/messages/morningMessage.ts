@@ -85,9 +85,38 @@ export const sanitizeMorningBodyForWhatsAppTemplate = (body: string): string =>
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 
-export const buildMorningTemplateVariables = (body: string): Record<string, string> => ({
-  '1': sanitizeMorningBodyForWhatsAppTemplate(body),
-});
+const toAskMediaPath = (url: string): string | null => {
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+  // Prefer using the public bucket host we already store in Firestore.
+  const prefixes = [
+    'https://s3.askadonai.com/',
+    'http://s3.askadonai.com/',
+  ];
+  for (const prefix of prefixes) {
+    if (trimmed.startsWith(prefix)) {
+      const rest = trimmed.slice(prefix.length);
+      return rest ? rest : null;
+    }
+  }
+  return null;
+};
+
+export const buildMorningTemplateVariables = (
+  body: string,
+  imageUrl?: string,
+): Record<string, string> => {
+  const vars: Record<string, string> = {
+    '1': sanitizeMorningBodyForWhatsAppTemplate(body),
+  };
+
+  const path = imageUrl ? toAskMediaPath(imageUrl) : null;
+  if (path) {
+    vars['2'] = path;
+  }
+
+  return vars;
+};
 
 export const buildMorningMessage = async (
   user: User,
