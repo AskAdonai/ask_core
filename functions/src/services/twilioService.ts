@@ -8,6 +8,8 @@ import {
 import {
   buildQuestWednesdayTemplateVariables,
 } from '../templates/questWednesdayTemplate';
+import type { RegistrationCompletePayload } from '../messages/registrationMessage';
+import type { KnockThemeConfirmPayload } from '../messages/knockThemeConfirmMessage';
 import pino from 'pino';
 import { AsyncLocalStorage } from 'async_hooks';
 import {
@@ -496,17 +498,103 @@ export const sendQuestSaturday = async (to: string, payload: QuestSaturdayPayloa
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Registration complete quick-reply (SEEK / KNOCK / HELP)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Sends the post-onboarding welcome with quick-reply buttons.
+ * Env var: TWILIO_CONTENT_SID_REGISTRATION_COMPLETE
+ */
+export const sendRegistrationCompleteMessage = async (
+  to: string,
+  payload: RegistrationCompletePayload,
+): Promise<string> => {
+  const {
+    buildRegistrationCompleteMessage,
+    buildRegistrationCompleteTemplateVariables,
+  } = await import('../messages/registrationMessage');
+  const contentSid = getContentSid('TWILIO_CONTENT_SID_REGISTRATION_COMPLETE');
+
+  const { body, fallbackBody } = buildRegistrationCompleteMessage(payload);
+
+  if (isMock() || !contentSid) {
+    logger.info({ to }, '[MOCK/FALLBACK] sendRegistrationCompleteMessage — no contentSid, using text');
+    return sendWhatsAppMessage(to, fallbackBody);
+  }
+
+  try {
+    const client = getTwilioClient();
+    const message = await withTypingIndicator(() => client.messages.create(withStatusCallback({
+      from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
+      to: `whatsapp:${to}`,
+      contentSid,
+      contentVariables: JSON.stringify(buildRegistrationCompleteTemplateVariables(body)),
+    } as any)), fallbackBody);
+
+    logger.info({ messageSid: message.sid, to }, 'Registration complete sent (interactive)');
+    return message.sid;
+  } catch (error) {
+    logger.error({ error, to }, 'Failed to send registration complete template — falling back to text');
+    return sendWhatsAppMessage(to, fallbackBody);
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// KNOCK theme confirm quick-reply (SEEK / KNOCK / VINE)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Sends confirmation after the user selects a KNOCK prayer theme.
+ * Env var: TWILIO_CONTENT_SID_KNOCK_THEME_CONFIRM
+ */
+export const sendKnockThemeConfirmMessage = async (
+  to: string,
+  payload: KnockThemeConfirmPayload,
+): Promise<string> => {
+  const {
+    buildKnockThemeConfirmMessage,
+    buildKnockThemeConfirmTemplateVariables,
+  } = await import('../messages/knockThemeConfirmMessage');
+  const contentSid = getContentSid('TWILIO_CONTENT_SID_KNOCK_THEME_CONFIRM');
+
+  const { body, fallbackBody } = buildKnockThemeConfirmMessage(payload);
+
+  if (isMock() || !contentSid) {
+    logger.info({ to }, '[MOCK/FALLBACK] sendKnockThemeConfirmMessage — no contentSid, using text');
+    return sendWhatsAppMessage(to, fallbackBody);
+  }
+
+  try {
+    const client = getTwilioClient();
+    const message = await withTypingIndicator(() => client.messages.create(withStatusCallback({
+      from: `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`,
+      to: `whatsapp:${to}`,
+      contentSid,
+      contentVariables: JSON.stringify(buildKnockThemeConfirmTemplateVariables(body)),
+    } as any)), fallbackBody);
+
+    logger.info({ messageSid: message.sid, to, theme: payload.themeName }, 'KNOCK theme confirm sent (interactive)');
+    return message.sid;
+  } catch (error) {
+    logger.error({ error, to }, 'Failed to send KNOCK theme confirm template — falling back to text');
+    return sendWhatsAppMessage(to, fallbackBody);
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Morning devotion quick-reply (SEEK / JOURNAL / VINE)
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
  * Sends the scheduled morning devotion with optional quick-reply buttons.
- * Video and audio URLs are embedded in the message body so they render as links in chat.
+ * Video URLs stay in the message body (WhatsApp inline YouTube preview).
+ * Audio is sent as a native media attachment when provided.
  */
 export const sendMorningDevotionMessage = async (
   to: string,
   body: string,
   imageUrl?: string,
+  audioUrl?: string,
 ): Promise<string> => {
   const {
     morningDevotionButtonFooter,
@@ -522,11 +610,20 @@ export const sendMorningDevotionMessage = async (
 
   const footer = `\n\n${morningDevotionButtonFooter}`;
   const fallbackBody = `${templateBody}${footer}`;
-  const mediaUrl = imageUrl && !imageUrl.includes('example.com') ? [imageUrl] : undefined;
+  const isDeliverableImageUrl = (url?: string): boolean =>
+    !!url?.trim()
+    && !url.includes('example.com')
+    && !/\.svg(?:\?|#|$)/i.test(url);
+  const mediaUrl = isDeliverableImageUrl(imageUrl) ? [imageUrl!] : undefined;
+  const attachmentAudio = audioUrl?.trim() && !audioUrl.includes('example.com') ? audioUrl.trim() : undefined;
 
   if (isMock() || !contentSid) {
     logger.info({ to }, '[MOCK/FALLBACK] sendMorningDevotionMessage — no contentSid, using text');
-    return sendWhatsAppMessage(to, fallbackBody, mediaUrl);
+    const sid = await sendWhatsAppMessage(to, fallbackBody, mediaUrl);
+    if (attachmentAudio) {
+      await sendWhatsAppMessage(to, "Listen along to today's devotion:", [attachmentAudio]);
+    }
+    return sid;
   }
 
   try {
@@ -545,30 +642,119 @@ export const sendMorningDevotionMessage = async (
       contentVariables: JSON.stringify(buildMorningTemplateVariables(templateBody)),
     } as any)), fallbackBody);
 
-    logger.info({ messageSid: message.sid, to }, 'Morning devotion sent (interactive)');
+    if (attachmentAudio) {
+      await sendWhatsAppMessage(to, "Listen along to today's devotion:", [attachmentAudio]);
+    }
+
+    logger.info({ messageSid: message.sid, to, hasAudio: !!attachmentAudio }, 'Morning devotion sent (interactive)');
     return message.sid;
   } catch (error) {
     logger.error({ error, to }, 'Failed to send morning devotion template — falling back to text');
-    return sendWhatsAppMessage(to, fallbackBody, mediaUrl);
+    const sid = await sendWhatsAppMessage(to, fallbackBody, mediaUrl);
+    if (attachmentAudio) {
+      await sendWhatsAppMessage(to, "Listen along to today's devotion:", [attachmentAudio]);
+    }
+    return sid;
   }
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Knock response content template
+// SEEK declaration quick-reply (YES / JOURNAL / VINE)
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Sends today's scripture declaration after SEEK.
+ * Env var: TWILIO_CONTENT_SID_KNOCK_RESPONSE (ask_seek_declaration)
+ *
+ * Audio: sent as a media message before the template when possible; the listen
+ * link is also embedded in {{1}} so the template body is self-contained.
+ */
 export const sendKnockResponse = async (to: string, declarationText: string, mediaUrls?: string[]): Promise<void> => {
-  const contentSid = getContentSid('TWILIO_CONTENT_SID_KNOCK_RESPONSE');
-  
-  const fallback = `Today's declaration:\n\n${declarationText}\n\nSpeak it aloud. When you have declared it, reply *YES*.\n\n• *YES* — I declare it\n• *JOURNAL* — reflect\n• *VINE* — my growth`;
+  const {
+    buildSeekDeclarationTemplateBody,
+    buildSeekDeclarationTemplateVariables,
+    seekDeclarationButtonFooter,
+  } = await import('../templates/seekDeclarationTemplate');
 
-  // If there are media URLs, send them first via a standard message so they aren't lost
-  if (mediaUrls && mediaUrls.length > 0) {
-    await sendWhatsAppMessage(to, "Listen to today's declaration:", mediaUrls);
-  }
+  const contentSid = getContentSid('TWILIO_CONTENT_SID_KNOCK_RESPONSE');
+  const audioUrl = mediaUrls?.find(
+    (url) =>
+      !!url?.trim()
+      && !url.includes('example.com')
+      && !/soundhelix\.com/i.test(url)
+      && !/via\.placeholder\.com/i.test(url),
+  );
+
+  const bodyForTemplate = buildSeekDeclarationTemplateBody(declarationText, audioUrl);
+  const fallback = `Today's declaration:\n\n${bodyForTemplate}\n\nSpeak it aloud. When you have declared it, reply *YES*.\n\n${seekDeclarationButtonFooter}`;
 
   if (isMock() || !contentSid) {
     logger.info({ to }, '[MOCK/FALLBACK] sendKnockResponse — no contentSid, using text');
+    await sendWhatsAppMessage(to, fallback, audioUrl ? [audioUrl] : undefined);
+    return;
+  }
+
+  let audioSent = false;
+
+  try {
+    // Native audio player — sent immediately before the interactive template.
+    if (audioUrl) {
+      await sendWhatsAppMessage(to, "Today's declaration:", [audioUrl]);
+      audioSent = true;
+    }
+
+    const client = getTwilioClient();
+    const from = `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`;
+    const toAddress = `whatsapp:${to}`;
+
+    const message = await withTypingIndicator(() => client.messages.create(withStatusCallback({
+      from,
+      to: toAddress,
+      contentSid,
+      contentVariables: JSON.stringify(
+        buildSeekDeclarationTemplateVariables(declarationText, audioUrl),
+      ),
+    } as any)), fallback);
+
+    logger.info({ messageSid: message.sid, to, audioSent }, 'SEEK declaration sent (content template)');
+  } catch (error) {
+    logger.error({ error, to }, 'Failed to send SEEK declaration template — falling back to text');
+    await sendWhatsAppMessage(
+      to,
+      fallback,
+      audioUrl && !audioSent ? [audioUrl] : undefined,
+    );
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Multiply declaration quick-reply (YES / JOURNAL / VINE)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Acknowledges an additional same-day declaration and re-offers quick-reply buttons.
+ * Env var: TWILIO_CONTENT_SID_MULTIPLY_DECLARATION (ask_multiply_declaration_ack)
+ * Falls back to TWILIO_CONTENT_SID_KNOCK_RESPONSE, then plain text.
+ */
+export const sendMultiplyDeclarationAck = async (
+  to: string,
+  name: string,
+  declarationsToday: number,
+): Promise<void> => {
+  const {
+    buildMultiplyDeclarationAckBody,
+    buildMultiplyDeclarationTemplateVariables,
+  } = await import('../templates/multiplyDeclarationAckTemplate');
+
+  const ackBody = buildMultiplyDeclarationAckBody(name, declarationsToday);
+  const multiplySid = getContentSid('TWILIO_CONTENT_SID_MULTIPLY_DECLARATION');
+  const seekSid = getContentSid('TWILIO_CONTENT_SID_KNOCK_RESPONSE');
+  const contentSid = multiplySid ?? seekSid;
+
+  const fallback = `${ackBody}\n\nTap the button below to declare again, or reply *JOURNAL* / *VINE*.`;
+
+  if (isMock() || !contentSid) {
+    logger.info({ to }, '[MOCK/FALLBACK] sendMultiplyDeclarationAck — no contentSid, using text');
     await sendWhatsAppMessage(to, fallback);
     return;
   }
@@ -582,12 +768,14 @@ export const sendKnockResponse = async (to: string, declarationText: string, med
       from,
       to: toAddress,
       contentSid,
-      contentVariables: JSON.stringify({ '1': declarationText }),
+      contentVariables: JSON.stringify(
+        buildMultiplyDeclarationTemplateVariables(name, declarationsToday),
+      ),
     } as any)), fallback);
 
-    logger.info({ messageSid: message.sid, to }, 'Knock response sent (content template)');
+    logger.info({ messageSid: message.sid, to, declarationsToday }, 'Multiply declaration ack sent');
   } catch (error) {
-    logger.error({ error, to }, 'Failed to send knock response template — falling back to text');
+    logger.error({ error, to }, 'Failed to send multiply declaration ack — falling back to text');
     await sendWhatsAppMessage(to, fallback);
   }
 };

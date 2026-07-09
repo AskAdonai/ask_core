@@ -8,6 +8,9 @@
  */
 import { loadLocalEnv } from '../src/config/loadLocalEnv';
 import { morningDevotionSampleVariables } from '../src/templates/morningDevotionTemplate';
+import { registrationCompleteSampleVariables } from '../src/templates/registrationCompleteTemplate';
+import { knockThemeConfirmSampleVariables } from '../src/templates/knockThemeConfirmTemplate';
+import { seekDeclarationSampleVariables } from '../src/templates/seekDeclarationTemplate';
 import { questMondaySampleVariables } from '../src/templates/questMondayTemplate';
 import { questWednesdaySampleVariables } from '../src/templates/questWednesdayTemplate';
 import { questSaturdaySampleVariables } from '../src/templates/questSaturdayTemplate';
@@ -34,24 +37,22 @@ const templates: TemplateCase[] = [
     contentVariables: morningDevotionSampleVariables,
   },
   {
-    label: 'Knock / SEEK declaration',
-    envKey: 'TWILIO_CONTENT_SID_KNOCK_RESPONSE',
-    contentSid: process.env.TWILIO_CONTENT_SID_KNOCK_RESPONSE,
-    contentVariables: {
-      '1': '[TEST] I am strong and courageous. The Lord goes with me wherever I go.',
-    },
+    label: 'Registration complete (quick-reply)',
+    envKey: 'TWILIO_CONTENT_SID_REGISTRATION_COMPLETE',
+    contentSid: process.env.TWILIO_CONTENT_SID_REGISTRATION_COMPLETE,
+    contentVariables: registrationCompleteSampleVariables,
   },
   {
-    label: 'Quiz question (quick-reply)',
-    envKey: 'TWILIO_CONTENT_SID_QUIZ',
-    contentSid: process.env.TWILIO_CONTENT_SID_QUIZ,
-    contentVariables: {
-      '1': '[TEST] Exodus — Q1 of 4',
-      '2': 'Who led Israel out of Egypt?\nA) Moses\nB) Aaron\nC) Joshua',
-      '3': 'A) Moses',
-      '4': 'B) Aaron',
-      '5': 'C) Joshua',
-    },
+    label: 'SEEK declaration (quick-reply)',
+    envKey: 'TWILIO_CONTENT_SID_KNOCK_RESPONSE',
+    contentSid: process.env.TWILIO_CONTENT_SID_KNOCK_RESPONSE,
+    contentVariables: seekDeclarationSampleVariables,
+  },
+  {
+    label: 'KNOCK theme confirm (quick-reply)',
+    envKey: 'TWILIO_CONTENT_SID_KNOCK_THEME_CONFIRM',
+    contentSid: process.env.TWILIO_CONTENT_SID_KNOCK_THEME_CONFIRM,
+    contentVariables: knockThemeConfirmSampleVariables,
   },
   {
     label: 'Quiz response',

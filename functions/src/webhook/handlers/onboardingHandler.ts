@@ -1,4 +1,4 @@
-import { sendWhatsAppMessage } from '../../services/twilioService';
+import { sendRegistrationCompleteMessage, sendWhatsAppMessage } from '../../services/twilioService';
 import {
   createPendingUser,
   setOnboardingStep,
@@ -6,6 +6,7 @@ import {
   createUser,
   User,
 } from '../../services/userService';
+import { isRegistrationComplete, buildOnboardingResumeMessage } from '../../services/userProfileService';
 import { parseTime } from '../../utils/timeParser';
 import { parsePhoneNumber } from 'libphonenumber-js';
 import { computeNextSendAt, computeNextReminderAt, computeUserScheduleFields } from '../../utils/timezone';
@@ -22,12 +23,12 @@ const JOURNEY_IMAGE_URL = process.env.JOURNEY_IMAGE_URL || '';
 
 /**
  * Entry point for the onboarding flow.
- * - If user already exists: sends their current vine stage + streak (duplicate guard).
- * - If new: creates a pending Firestore doc and sends the welcome message.
+ * - Fully registered users: vine status (duplicate guard).
+ * - Incomplete users: resume at the current onboarding step.
+ * - New users: create a pending Firestore doc and send the welcome message.
  */
 export const handleOnboarding = async (phone: string, user: Partial<User> | null): Promise<void> => {
-  // Duplicate guard — user already registered
-  if (user && user.awaitingOnboardingStep === null || (user && user.name)) {
+  if (user && isRegistrationComplete(user)) {
     const name = user.name || 'Friend';
     const stage = user.vineStage || 'Grafted';
     const streak = user.streak ?? 0;
@@ -36,6 +37,12 @@ export const handleOnboarding = async (phone: string, user: Partial<User> | null
       `You are already planted, ${name}. Your vine is *${stage}* — Streak: ${streak} day${streak === 1 ? '' : 's'}. Reply HELP to see your options.`
     );
     logger.info({ phone, stage, streak }, 'Duplicate ASK — returning vine status');
+    return;
+  }
+
+  if (user && !isRegistrationComplete(user)) {
+    await sendWhatsAppMessage(phone, buildOnboardingResumeMessage(user));
+    logger.info({ phone, step: user.awaitingOnboardingStep }, 'Resuming incomplete onboarding after ASK');
     return;
   }
 
@@ -221,9 +228,9 @@ export const handleTimeReply = async (phone: string, rawText: string, user: Part
     await sendWhatsAppMessage(phone, JOURNEY_IMAGE_URL);
   }
 
-  // ── Journey Welcome — Message 2 ─────────────────────────────────────────
-  await sendWhatsAppMessage(
-    phone,
-    `We begin at Season 1 *Believe*.\n\nHowever, if your heart has a specific prayer need at any time — healing, provision, a waiting season — simply type *KNOCK* at any time and I will bring you targeted prayers alongside your journey.\n\nYou are *Grafted* on Day 1. Your first morning card arrives tomorrow at ${scheduleFields.reminderTimeLocal}. When it does, please read it slowly. Then type *SEEK* when you are ready to make today's declaration. Together we will Ask, Seek and Knock every day.\n\nI will see you tomorrow morning. 🙏\n\n_SEEK — make today's declaration_\n_KNOCK — browse prayer themes_\n_HELP — see all I can do_`
-  );
+  // ── Journey Welcome — Message 2 (quick-reply buttons when template SID is set) ─
+  await sendRegistrationCompleteMessage(phone, {
+    name: user?.name || 'Friend',
+    morningTime: scheduleFields.reminderTimeLocal,
+  });
 };

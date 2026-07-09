@@ -72,7 +72,7 @@ cd whatsappBot
 
 ## Other scripts
 
-| Script | Use |
-|--------|-----|
-| `./deploy.sh` | Deploy / update all functions |
+| Script          | Use                                                                    |
+| --------------- | ---------------------------------------------------------------------- |
+| `./deploy.sh`   | Deploy / update all functions                                          |
 | `./teardown.sh` | Remove all GCP resources (`TEARDOWN_CONFIRM=PROJECT_ID ./teardown.sh`) |

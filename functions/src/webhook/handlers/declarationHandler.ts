@@ -1,24 +1,66 @@
 import { getFirestore } from 'firebase-admin/firestore';
 import { sendKnockResponse } from '../../services/twilioService';
-import { getJourneyPrayerContent, getKnockPrayerContent } from '../../services/prayerCardService';
-import { getActiveKnockTheme } from '../../services/knockSessionService';
+import { getPrayerCard } from '../../services/prayerCardService';
 import type { User, DailyDeclaration } from '../../types/schemas';
 import { DateTime } from 'luxon';
 import pino from 'pino';
 
 const logger = pino();
 
+const isPlaceholderAudioUrl = (url?: string): boolean =>
+  !url?.trim()
+  || url.includes('example.com')
+  || /soundhelix\.com/i.test(url)
+  || /via\.placeholder\.com/i.test(url);
+
 /**
- * KNOCK — declaration flow.
+ * Resolves which journey stage/day SEEK should use for content.
  *
- * Fetches today's declaration text, sends it with optional audio,
- * and enters the YES confirmation loop.
+ * Same-day continuity: once a content day is snapshotted for today (first SEEK),
+ * later SEEK after YES still serves that day — even if journeyDayIndex already
+ * advanced. Next calendar day starts a new snapshot from the live pointer.
+ */
+export const resolveDeclarationContentPosition = (
+  user: Partial<User>,
+  todayStr: string,
+): { journeyStage: number; journeyDayIndex: number; fromSnapshot: boolean } => {
+  const liveStage = user.journeyStage ?? 1;
+  const liveDay = user.journeyDayIndex ?? 1;
+
+  if (
+    user.declarationContentDate === todayStr
+    && Number.isFinite(user.declarationContentStage)
+    && Number.isFinite(user.declarationContentDayIndex)
+    && (user.declarationContentStage as number) >= 1
+    && (user.declarationContentDayIndex as number) >= 1
+  ) {
+    return {
+      journeyStage: user.declarationContentStage as number,
+      journeyDayIndex: user.declarationContentDayIndex as number,
+      fromSnapshot: true,
+    };
+  }
+
+  return {
+    journeyStage: liveStage,
+    journeyDayIndex: liveDay,
+    fromSnapshot: false,
+  };
+};
+
+/**
+ * SEEK — declaration flow.
+ *
+ * Fetches today's declaration text from the journey curriculum (or admin calendar),
+ * sends it with optional declaration audio, and enters the YES confirmation loop.
  *
  * Declaration source priority:
  *   1. Calendar-based dailyDeclarations/{YYYY-MM-DD}
- *   2. Active KNOCK theme prayer's declarationText
- *   3. Journey prayer card's declarationText
- *   4. Hardcoded fallback
+ *   2. Journey prayer card's declarationText (+ declarationAudioUrl)
+ *   3. Hardcoded fallback (text only)
+ *
+ * Active KNOCK / targeted-prayer themes are intentionally excluded — those are
+ * delivered only through the explicit KNOCK theme flow.
  */
 export const deliverDeclaration = async (
   phone: string,
@@ -37,34 +79,23 @@ export const deliverDeclaration = async (
 
   const dailyDeclDoc = await db.collection('dailyDeclarations').doc(todayStr).get();
 
+  const contentPosition = resolveDeclarationContentPosition(user, todayStr);
+
   if (dailyDeclDoc.exists) {
     const data = dailyDeclDoc.data() as DailyDeclaration;
     declarationText = data.declarationText || '';
-    if (data.audioUrl && !data.audioUrl.includes('example.com')) {
-      mediaUrls.push(data.audioUrl);
+    if (!isPlaceholderAudioUrl(data.audioUrl)) {
+      mediaUrls.push(data.audioUrl!.trim());
     }
   } else {
-    const activeThemeId = await getActiveKnockTheme(phone);
-    if (activeThemeId) {
-      const knockContent = await getKnockPrayerContent(
-        activeThemeId,
-        user.knockPrayerIndex ?? 0,
-      );
-      const knockCard = knockContent?.prayer;
-      if (knockCard?.declarationText) {
-        declarationText = knockCard.declarationText;
-        if (knockCard.declarationAudioUrl && !knockCard.declarationAudioUrl.includes('example.com')) {
-          mediaUrls.push(knockCard.declarationAudioUrl);
-        }
-      }
-    } else {
-      const content = await getJourneyPrayerContent(user.journeyStage ?? 1, user.journeyDayIndex ?? 1);
-      if (content?.prayer.declarationText) {
-        declarationText = content.prayer.declarationText;
-        const audioUrl = content.prayer.declarationAudioUrl;
-        if (audioUrl && !audioUrl.includes('example.com')) {
-          mediaUrls.push(audioUrl);
-        }
+    const card = await getPrayerCard(
+      contentPosition.journeyStage,
+      contentPosition.journeyDayIndex,
+    );
+    if (card?.declarationText?.trim()) {
+      declarationText = card.declarationText.trim();
+      if (!isPlaceholderAudioUrl(card.declarationAudioUrl)) {
+        mediaUrls.push(card.declarationAudioUrl!.trim());
       }
     }
   }
@@ -73,10 +104,29 @@ export const deliverDeclaration = async (
 
   await sendKnockResponse(phone, declarationText, mediaUrls);
 
-  await db.collection('users').doc(userId).update({
+  const snapshotUpdate: Record<string, unknown> = {
     awaitingDeclarationYes: true,
     updatedAt: new Date(),
-  });
+  };
 
-  logger.info({ phone }, 'Delivered KNOCK declaration and started YES flow');
+  // Snapshot today's content position on first SEEK of the local day so YES
+  // advancing journeyDayIndex cannot make a later same-day SEEK jump ahead.
+  if (!contentPosition.fromSnapshot) {
+    snapshotUpdate.declarationContentDate = todayStr;
+    snapshotUpdate.declarationContentStage = contentPosition.journeyStage;
+    snapshotUpdate.declarationContentDayIndex = contentPosition.journeyDayIndex;
+  }
+
+  await db.collection('users').doc(userId).update(snapshotUpdate);
+
+  logger.info(
+    {
+      phone,
+      journeyStage: contentPosition.journeyStage,
+      journeyDayIndex: contentPosition.journeyDayIndex,
+      fromSnapshot: contentPosition.fromSnapshot,
+      hasAudio: mediaUrls.length > 0,
+    },
+    'Delivered SEEK declaration and started YES flow',
+  );
 };

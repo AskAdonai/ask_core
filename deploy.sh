@@ -44,6 +44,7 @@ OPTIONAL_SECRETS=(
   TWILIO_API_KEY_SECRET
   R2_ACCESS_KEY_ID
   R2_SECRET_ACCESS_KEY
+  RESEND_API_KEY
 )
 
 # Never inject these from .env.yaml — they belong in Secret Manager only
@@ -55,6 +56,7 @@ SECRET_ENV_KEYS=(
   TWILIO_API_KEY_SECRET
   R2_ACCESS_KEY_ID
   R2_SECRET_ACCESS_KEY
+  RESEND_API_KEY
 )
 
 # Deploy always sets these; .env.yaml values for these keys are ignored
@@ -187,7 +189,7 @@ load_environment() {
 
   export GOOGLE_CLOUD_PROJECT="${GOOGLE_CLOUD_PROJECT:-$PROJECT_ID}"
   export FIREBASE_PROJECT_ID="${FIREBASE_PROJECT_ID:-$PROJECT_ID}"
-  export ALLOWED_ADMIN_ORIGINS="${ALLOWED_ADMIN_ORIGINS:-http://localhost:3000}"
+  export ALLOWED_ADMIN_ORIGINS="${ALLOWED_ADMIN_ORIGINS:-https://dashboard.askadonai.com}"
   export TWILIO_WEBHOOK_BASE_URL="${TWILIO_WEBHOOK_BASE_URL:-https://${REGION}-${PROJECT_ID}.cloudfunctions.net/whatsappWebhook}"
 
   # Keep deploy target in sync with loaded env files (ignore stale shell exports).
@@ -478,7 +480,7 @@ for item in data.get('spec', {}).get('template', {}).get('spec', {}).get('contai
 
 build_admin_secret_flags() {
   local flags=()
-  for secret in R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY; do
+  for secret in R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY RESEND_API_KEY; do
     if gcloud secrets describe "${secret}" --project="${PROJECT_ID}" >/dev/null 2>&1; then
       flags+=("${secret}=${secret}:latest")
     fi

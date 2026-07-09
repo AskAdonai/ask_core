@@ -9,7 +9,7 @@ import { JourneyStage } from './JourneyStage';
  * Sub-collections:
  *   users/{phone}/journal/{YYYY-MM-DD}        → JournalEntry
  *   users/{phone}/declarations/{YYYY-MM-DD}   → DeclarationLog
- *   users/{phone}/questLog/{YYYY-MM-DD}       → QuestLog
+ *   users/{phone}/streakHistory/{historyId}      → StreakHistoryEntry
  */
 export interface User {
   // ── Identity ────────────────────────────────────────────────────────────────
@@ -30,10 +30,14 @@ export interface User {
   lockedUntil: Date | null; // execution lease — null when not being processed
 
   // ── Journey Progress ───────────────────────────────────────────────────────
-  journeyStage: JourneyStage; // 1-9  (Believe → Reign)
-  journeyDayIndex: number;       // day within current stage (1-based)
+  journeyStage: JourneyStage; // 1-based stage index into journeyStages
+  journeyDayIndex: number;       // delivery slot within current stage (maps to card deliveryOrder)
   vineStage: 'Grafted' | 'Rooted' | 'Growing' | 'Blooming' | 'Fruitful';
   streak: number;                // consecutive daily engagement days
+  /** Highest streakMilestones.streakDays celebration already sent to this user. */
+  lastMilestoneStreakDays: number;
+  /** Full grace-day allowance; effective remaining is computed lazily from lastActiveDate. */
+  graceDaysRemaining: number;
 
   // ── Daily State ────────────────────────────────────────────────────────────
   lastActiveDate: string;        // "YYYY-MM-DD" in user's local timezone
@@ -56,10 +60,36 @@ export interface User {
   awaitingDeclarationYes: boolean;
   awaitingReminderTime: boolean;
 
+  // ── SEEK same-day content snapshot ─────────────────────────────────────────
+  /**
+   * Content day keyed to the user's first SEEK of a local calendar day.
+   * Survives journeyDayIndex advancing on YES so same-day repeat SEEK stays on
+   * today's declaration (multiply continuity) rather than tomorrow's card.
+   */
+  declarationContentDate?: string;       // "YYYY-MM-DD" in user TZ
+  declarationContentStage?: number;
+  declarationContentDayIndex?: number;
+
   // ── KNOCK Prayer State ─────────────────────────────────────────────────────
   // Inline (no separate userNeedSessions collection).
   activeKnockTheme: string;      // themeId or "" when no active KNOCK session
-  knockPrayerIndex: number;      // index within prayerThemes/{themeId}/prayers
+  /**
+   * 1-based position in the active theme's ordered prayer sequence.
+   * Resets to 1 when the user selects a theme; advances on the first KNOCK of each new local day.
+   */
+  knockCount: number;
+  /** True when the user has received all currently available prayers for activeKnockTheme. */
+  knockThemeExhausted: boolean;
+  /** Local "YYYY-MM-DD" of the last KNOCK delivery. */
+  lastKnockDate?: string;
+  /** @deprecated Legacy list-based tracking — migrated to knockCount on read. */
+  knockDeliveredPrayerIds?: string[];
+  /** @deprecated Legacy in-flight prayer pointer — migrated to knockCount on read. */
+  knockCurrentPrayerId?: string;
+  /** @deprecated Legacy same-day multiply counter — no longer used. */
+  knockCurrentCount?: number;
+  /** @deprecated Legacy index field — use knockCount. */
+  knockPrayerIndex?: number;
 
   // ── Quest State ────────────────────────────────────────────────────────────
   // Inline (no separate questProgress collection).

@@ -17,6 +17,7 @@ const SECRET_KEYS = new Set([
   'TWILIO_API_KEY_SECRET',
   'R2_ACCESS_KEY_ID',
   'R2_SECRET_ACCESS_KEY',
+  'RESEND_API_KEY',
 ]);
 
 export function loadLocalEnv(): void {

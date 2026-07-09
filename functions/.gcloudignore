@@ -1,8 +1,12 @@
-# Never upload node_modules — GCP Cloud Build installs them fresh from package.json
+# Upload only what Cloud Functions need at runtime:
+#   package.json, yarn.lock, lib/ (compiled JS + lib/seed/morningGreetings.json)
+# Run `npx tsc` in functions/ before deploy (deploy.sh does this).
+
+# ── Dependencies (reinstalled on GCP) ──────────────────────────────────────
 node_modules/
 **/node_modules/
 
-# Secrets and local config — runtime env comes from deploy.sh (--env-vars-file + Secret Manager)
+# ── Secrets & local config ───────────────────────────────────────────────────
 .env
 **/.env
 **/*.env
@@ -11,27 +15,44 @@ node_modules/
 .env.example
 **/.env.example
 
-# Tests and coverage (not used in production)
-**/*.test.ts
-**/*.spec.ts
+# ── TypeScript sources (compiled locally → lib/) ─────────────────────────────
+src/
+
+# ── Tests & coverage ─────────────────────────────────────────────────────────
 test/
 coverage/
+**/*.test.ts
+**/*.test.js
+**/*.spec.ts
+**/*.spec.js
 
-# Dev-only tooling
-*.log
-jest.config.ts
-.eslintrc*
-
-# One-off local scripts (not Cloud Function entry points)
+# ── Dev scripts & one-off tooling ───────────────────────────────────────────
+scripts/
 seed_*.ts
 seed_*.js
+seed_firestore.ts
 verify_*.ts
 verify_*.js
 set_cors.ts
 injectSwagger.js
-src/server.ts
+tsconfig.json
+jest.config.ts
+.eslintrc*
+.prettierrc*
+prettier.config.*
 
-# Seed/migration scripts — only morningGreetings.json is imported at runtime
-src/seed/*.ts
+# ── Docs & repo metadata ───────────────────────────────────────────────────────
+**/*.md
+.gitignore
+.github/
 
-# lib/ is produced by `npm run build` before deploy (Cloud Build does not run tsc here)
+# ── Duplicate lockfile (project uses yarn.lock) ───────────────────────────────
+package-lock.json
+
+# ── Logs ─────────────────────────────────────────────────────────────────────
+*.log
+
+# ── Compiled dev-only output (not imported by lib/index.js) ──────────────────
+lib/server.js
+lib/config/
+lib/seed/*.js

@@ -145,7 +145,7 @@ jobs:
             --source="$(pwd)/functions" --entry-point=whatsappWebhook \
             --trigger-http --allow-unauthenticated \
             --set-env-vars=PUBSUB_TOPIC_MORNING_SEND=morning-send-topic,PUBSUB_TOPIC_REMINDER_SEND=reminder-send-topic,GOOGLE_CLOUD_PROJECT=$PROJECT_ID,FIREBASE_PROJECT_ID=$PROJECT_ID \
-            --set-secrets=TWILIO_ACCOUNT_SID=TWILIO_ACCOUNT_SID:latest,TWILIO_AUTH_TOKEN=TWILIO_AUTH_TOKEN:latest,TWILIO_WHATSAPP_NUMBER=TWILIO_WHATSAPP_NUMBER:latest,TWILIO_CONTENT_SID_QUIZ=TWILIO_CONTENT_SID_QUIZ:latest
+            --set-secrets=TWILIO_ACCOUNT_SID=TWILIO_ACCOUNT_SID:latest,TWILIO_AUTH_TOKEN=TWILIO_AUTH_TOKEN:latest,TWILIO_WHATSAPP_NUMBER=TWILIO_WHATSAPP_NUMBER:latest
 
       - name: Deploy processMorningDispatch
         run: |

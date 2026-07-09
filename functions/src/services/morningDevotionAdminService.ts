@@ -1,17 +1,20 @@
 import { buildMorningMessage } from '../messages/morningMessage';
 import {
   getJourneyPrayerContent,
-  getKnockPrayerContent,
-  type ResolvedPrayerContent,
+  type ResolvedJourneyDevotion,
 } from './prayerCardService';
 import { getFirestore } from 'firebase-admin/firestore';
 import type { PrayerCard } from '../types/PrayerCard';
-import type { Prayer } from '../types/PrayerTheme';
+import { resolveDeliveryOrder, resolveReflectionPrompt, resolveScriptureText } from '../types/PrayerCard';
 import type { User } from '../types/User';
-import { JOURNEY_STAGE_CONFIG, JourneyStage } from '../types/JourneyStage';
+import { JourneyStage } from '../types/JourneyStage';
+import { listJourneyStages } from './journeyStageService';
 
 const isPlaceholderUrl = (url?: string): boolean =>
-  !url || url.includes('example.com');
+  !url?.trim()
+  || url.includes('example.com')
+  || /soundhelix\.com/i.test(url)
+  || /via\.placeholder\.com/i.test(url);
 
 export interface MorningDevotionFieldStatus {
   field: string;
@@ -47,9 +50,9 @@ export interface MorningDevotionCardSummary {
   cardId: string;
   journeyStage: number;
   dayIndex: number;
-  themeId: string;
-  prayerId: string;
-  prayerTitle?: string;
+  deliveryOrder: number;
+  title?: string;
+  categoryId?: string;
   imageUrl?: string;
   morningVoiceNoteUrl?: string;
   devotionLink?: string;
@@ -58,7 +61,6 @@ export interface MorningDevotionCardSummary {
 
 export const assessMorningDevotionCompleteness = (
   card: PrayerCard | null | undefined,
-  prayer: Prayer | null | undefined,
 ): MorningDevotionCompleteness => {
   const fields: MorningDevotionFieldStatus[] = [
     {
@@ -68,20 +70,16 @@ export const assessMorningDevotionCompleteness = (
       message: card ? undefined : 'No prayer card for this stage and day',
     },
     {
-      field: 'themeId',
-      label: 'Theme linked',
-      ok: !!card?.themeId,
+      field: 'title',
+      label: 'Devotion title',
+      ok: !!card?.title?.trim(),
+      message: 'Set a title for delivery and list display',
     },
     {
-      field: 'prayerId',
-      label: 'Prayer linked',
-      ok: !!card?.prayerId,
-    },
-    {
-      field: 'prayer',
-      label: 'Linked prayer found',
-      ok: !!prayer,
-      message: prayer ? undefined : 'Prayer document missing in theme sub-collection',
+      field: 'categoryId',
+      label: 'Category',
+      ok: !!card?.categoryId?.trim(),
+      message: 'Optional — assign a devotion category',
     },
     {
       field: 'imageUrl',
@@ -92,21 +90,27 @@ export const assessMorningDevotionCompleteness = (
     {
       field: 'prayerText',
       label: 'Prayer body',
-      ok: !!prayer?.prayerText?.trim(),
+      ok: !!card?.prayerText?.trim(),
     },
     {
-      field: 'reflectionQuestion',
-      label: 'Reflection question',
-      ok: !!(prayer?.reflectionQuestion?.trim() || card?.journalPrompt?.trim()),
-      message: 'Set reflectionQuestion on prayer or journalPrompt on card',
+      field: 'scriptureText',
+      label: 'Scripture text',
+      ok: !!resolveScriptureText(card),
+      message: 'Optional anchor verse for the devotion body',
+    },
+    {
+      field: 'reflectionPrompt',
+      label: 'Reflection prompt',
+      ok: !!resolveReflectionPrompt(card),
+      message: 'Set the reflection prompt shown after the devotion links',
     },
     {
       field: 'listenLink',
-      label: 'Listen link',
+      label: 'Devotion audio',
       ok:
-        !isPlaceholderUrl(card?.morningVoiceNoteUrl) ||
-        !isPlaceholderUrl(prayer?.declarationAudioUrl),
-      message: 'Add morningVoiceNoteUrl or declarationAudioUrl',
+        !isPlaceholderUrl(card?.audioUrl) ||
+        !isPlaceholderUrl(card?.morningVoiceNoteUrl),
+      message: 'Optional — add audioUrl (R2) for hands-free listening',
     },
     {
       field: 'devotionLink',
@@ -117,8 +121,8 @@ export const assessMorningDevotionCompleteness = (
   ];
 
   const requiredReady = fields
-    .filter(f => f.field !== 'devotionLink')
-    .every(f => f.ok);
+    .filter((f) => f.field !== 'devotionLink' && f.field !== 'categoryId')
+    .every((f) => f.ok);
 
   return { ready: requiredReady, fields };
 };
@@ -140,6 +144,8 @@ const buildPreviewUser = (options: MorningDevotionPreviewOptions): User => {
     journeyDayIndex: options.journeyDayIndex,
     vineStage: options.vineStage ?? 'Grafted',
     streak: options.streak ?? 1,
+    lastMilestoneStreakDays: 0,
+    graceDaysRemaining: 3,
     lastActiveDate: '',
     declarationsToday: 0,
     journaledToday: false,
@@ -156,7 +162,8 @@ const buildPreviewUser = (options: MorningDevotionPreviewOptions): User => {
     awaitingDeclarationYes: false,
     awaitingReminderTime: false,
     activeKnockTheme: options.activeKnockTheme ?? '',
-    knockPrayerIndex: options.knockPrayerIndex ?? 0,
+    knockCount: 1,
+    knockThemeExhausted: false,
     questActive: false,
     questWeek: 1,
     questVideoIndex: 0,
@@ -178,43 +185,32 @@ export const buildMorningDevotionPreview = async (
   preview: MorningDevotionPreviewResult;
   sources: {
     cardId?: string;
-    themeId?: string;
-    prayerId?: string;
-    activeKnockTheme?: string;
+    categoryId?: string;
   };
   completeness: MorningDevotionCompleteness;
-  journeyContent: ResolvedPrayerContent | null;
-  themeContent: ResolvedPrayerContent | null;
+  journeyContent: ResolvedJourneyDevotion | null;
+  themeContent: null;
 }> => {
   const journeyContent = await getJourneyPrayerContent(
     options.journeyStage,
     options.journeyDayIndex,
   );
 
-  const activeThemeId = (options.activeKnockTheme ?? '').trim();
-  const themeContent = activeThemeId
-    ? await getKnockPrayerContent(activeThemeId, options.knockPrayerIndex ?? 0)
-    : null;
-
   const user = buildPreviewUser(options);
-  const { text, cloudflareMediaId, audioUrl, videoUrl } = buildMorningMessage(
+  const { text, cloudflareMediaId, attachmentAudioUrl, videoUrl } = await buildMorningMessage(
     user,
     journeyContent,
-    themeContent,
   );
 
   const { morningDevotionButtonFooter } = await import('../messages/morningMessage');
 
-  const completeness = assessMorningDevotionCompleteness(
-    journeyContent?.card,
-    journeyContent?.prayer,
-  );
+  const completeness = assessMorningDevotionCompleteness(journeyContent?.card);
 
   return {
     preview: {
       text,
       imageUrl: cloudflareMediaId,
-      audioUrl,
+      audioUrl: attachmentAudioUrl,
       videoUrl,
       buttonFooter: morningDevotionButtonFooter,
     },
@@ -222,13 +218,11 @@ export const buildMorningDevotionPreview = async (
       cardId: journeyContent?.card
         ? `stage${options.journeyStage}-day${options.journeyDayIndex}`
         : undefined,
-      themeId: journeyContent?.themeId,
-      prayerId: journeyContent?.prayerId,
-      activeKnockTheme: activeThemeId || undefined,
+      categoryId: journeyContent?.card?.categoryId,
     },
     completeness,
     journeyContent,
-    themeContent,
+    themeContent: null,
   };
 };
 
@@ -251,23 +245,15 @@ export const listMorningDevotionCards = async (
 
   for (const doc of snap.docs) {
     const card = doc.data() as PrayerCard;
-    const prayerSnap = await db
-      .collection('prayerThemes')
-      .doc(card.themeId)
-      .collection('prayers')
-      .doc(card.prayerId)
-      .get();
-
-    const prayer = prayerSnap.exists ? (prayerSnap.data() as Prayer) : null;
-    const completeness = assessMorningDevotionCompleteness(card, prayer);
+    const completeness = assessMorningDevotionCompleteness(card);
 
     cards.push({
       cardId: doc.id,
       journeyStage: card.journeyStage,
       dayIndex: card.dayIndex,
-      themeId: card.themeId,
-      prayerId: card.prayerId,
-      prayerTitle: prayer?.title,
+      deliveryOrder: resolveDeliveryOrder(card),
+      title: card.title?.trim() || undefined,
+      categoryId: card.categoryId,
       imageUrl: card.imageUrl,
       morningVoiceNoteUrl: card.morningVoiceNoteUrl,
       devotionLink: card.devotionLink,
@@ -277,14 +263,15 @@ export const listMorningDevotionCards = async (
 
   cards.sort((a, b) =>
     a.journeyStage === b.journeyStage
-      ? a.dayIndex - b.dayIndex
+      ? a.deliveryOrder - b.deliveryOrder
       : a.journeyStage - b.journeyStage,
   );
 
-  const stages = Object.entries(JOURNEY_STAGE_CONFIG).map(([stage, config]) => ({
-    stage: Number(stage),
-    name: config.name,
-    requiredDays: config.requiredDays,
+  const journeyStages = await listJourneyStages();
+  const stages = journeyStages.map((stage) => ({
+    stage: stage.stageNumber,
+    name: stage.title,
+    requiredDays: stage.dayCount,
   }));
 
   return { cards, stages };

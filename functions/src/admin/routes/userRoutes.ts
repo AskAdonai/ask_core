@@ -1,9 +1,15 @@
-import { Router, Request, Response } from 'express';
+import { Router, Response } from 'express';
 import { getFirestore, FieldValue, DocumentData } from 'firebase-admin/firestore';
 import pino from 'pino';
+import type { AuthedRequest } from '../middleware/authMiddleware';
+import { requireAtLeastRole } from '../middleware/authMiddleware';
+import { clampJourneyDayToStage, getJourneyStage } from '../../services/journeyStageService';
 
 const logger = pino();
 const userRoutes = Router();
+
+// Users contain sensitive PII; restrict to superadmin.
+userRoutes.use(requireAtLeastRole('superadmin'));
 
 function normalizeUserId(phone: string): string {
   return decodeURIComponent(phone).replace(/^\+/, '');
@@ -42,7 +48,7 @@ function sanitizeUserData(data: DocumentData): DocumentData {
  *         description: Internal Server Error
  */
 // GET /admin/users - List all users (basic details)
-userRoutes.get('/', async (req: Request, res: Response): Promise<void> => {
+userRoutes.get('/', async (_req: AuthedRequest, res: Response): Promise<void> => {
   try {
     const db = getFirestore();
     const snap = await db.collection('users').get();
@@ -93,8 +99,37 @@ userRoutes.get('/', async (req: Request, res: Response): Promise<void> => {
  *       500:
  *         description: Internal Server Error
  */
+// GET /admin/users/:phone/streak-history - List streak reset shadow records
+userRoutes.get('/:phone/streak-history', async (req: AuthedRequest, res: Response): Promise<void> => {
+  try {
+    const userId = normalizeUserId(req.params.phone as string);
+    const { listStreakHistory } = await import('../../services/streakHistoryService');
+    const history = await listStreakHistory(userId);
+    res.status(200).json({ history });
+  } catch (error) {
+    logger.error({ error }, 'Error listing streak history');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /admin/users/:phone/restore-streak - Restore streak from shadow history (admin pardon)
+userRoutes.post('/:phone/restore-streak', async (req: AuthedRequest, res: Response): Promise<void> => {
+  try {
+    const userId = normalizeUserId(req.params.phone as string);
+    const historyId = typeof req.body?.historyId === 'string' ? req.body.historyId : undefined;
+    const { restoreStreakFromHistory } = await import('../../services/streakHistoryService');
+    const result = await restoreStreakFromHistory(userId, historyId);
+    res.status(200).json({ status: 'success', ...result });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Internal server error';
+    const status = message.includes('not found') ? 404 : 400;
+    logger.error({ error }, 'Error restoring streak from history');
+    res.status(status).json({ error: message });
+  }
+});
+
 // GET /admin/users/:phone - Get a specific user's full details
-userRoutes.get('/:phone', async (req: Request, res: Response): Promise<void> => {
+userRoutes.get('/:phone', async (req: AuthedRequest, res: Response): Promise<void> => {
   try {
     const phone = req.params.phone as string;
     const userId = normalizeUserId(phone);
@@ -160,7 +195,7 @@ userRoutes.get('/:phone', async (req: Request, res: Response): Promise<void> => 
  *         description: Internal Server Error
  */
 // PUT /admin/users/:phone - Update a user's details
-userRoutes.put('/:phone', async (req: Request, res: Response): Promise<void> => {
+userRoutes.put('/:phone', async (req: AuthedRequest, res: Response): Promise<void> => {
   try {
     const phone = req.params.phone as string;
     const userId = normalizeUserId(phone);
@@ -184,6 +219,26 @@ userRoutes.put('/:phone', async (req: Request, res: Response): Promise<void> => 
     if (!doc.exists) {
       res.status(404).json({ error: `User ${phone} not found` });
       return;
+    }
+
+    if (updates.journeyStage !== undefined || updates.journeyDayIndex !== undefined) {
+      const existing = doc.data()!;
+      const stageNumber = Number(updates.journeyStage ?? existing.journeyStage ?? 1);
+      const dayIndex = Number(updates.journeyDayIndex ?? existing.journeyDayIndex ?? 1);
+
+      if (!Number.isFinite(stageNumber) || stageNumber < 1) {
+        res.status(400).json({ error: 'Invalid journeyStage' });
+        return;
+      }
+
+      const stage = await getJourneyStage(stageNumber);
+      if (!stage) {
+        res.status(400).json({ error: `Journey stage ${stageNumber} does not exist` });
+        return;
+      }
+
+      updates.journeyStage = stageNumber;
+      updates.journeyDayIndex = await clampJourneyDayToStage(stageNumber, dayIndex);
     }
 
     await docRef.set(
@@ -237,7 +292,7 @@ userRoutes.put('/:phone', async (req: Request, res: Response): Promise<void> => 
  *         description: Internal Server Error
  */
 // DELETE /admin/users/:phone - Delete a user recursively
-userRoutes.delete('/:phone', async (req: Request, res: Response): Promise<void> => {
+userRoutes.delete('/:phone', async (req: AuthedRequest, res: Response): Promise<void> => {
   try {
     const phone = req.params.phone as string;
     const userId = normalizeUserId(phone);
@@ -300,7 +355,7 @@ userRoutes.delete('/:phone', async (req: Request, res: Response): Promise<void> 
  *         description: Internal Server Error
  */
 // POST /admin/users - Create a new user
-userRoutes.post('/', async (req: Request, res: Response): Promise<void> => {
+userRoutes.post('/', async (req: AuthedRequest, res: Response): Promise<void> => {
   try {
     const { phone, ...userData } = req.body;
 

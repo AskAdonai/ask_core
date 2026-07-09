@@ -5,6 +5,9 @@
  * The document ID is the week number as a string: "1", "2" … "52".
  */
 
+import type { Timestamp } from 'firebase-admin/firestore';
+import type { ContentAuthor } from './ContentAuthor';
+
 export interface QuestContent {
   weekNumber: number;
   status: 'draft' | 'published';
@@ -12,6 +15,11 @@ export interface QuestContent {
   weeklyChapterSpan?: string;
   weekIntro?: string;         // intro paragraph sent on QUEST enrollment or WATCH
   introImageUrl: string;      // MUST HAVE: image for their preparations before Tuesday
+  createdBy?: ContentAuthor;
+  publishedBy?: ContentAuthor;
+  publishedAt?: Timestamp | Date;
+  createdAt?: Timestamp | Date;
+  updatedAt?: Timestamp | Date;
   days: {
     monday?: {
       readingPortion?: string;

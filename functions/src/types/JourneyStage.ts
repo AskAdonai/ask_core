@@ -22,54 +22,54 @@ export const JOURNEY_STAGE_CONFIG: Record<JourneyStage, JourneyStageConfig> = {
     name: 'Believe',
     description: 'New beginnings, rebuilding and strengthening faith',
     subtitle: 'The door opens',
-    requiredDays: 20
+    requiredDays: 41,
   },
   [JourneyStage.ABIDE]: {
     name: 'Abide',
     description: 'Abiding in Christ, intimacy with the Holy Spirit, nourishment in the Word',
     subtitle: 'Roots go down',
-    requiredDays: 30
+    requiredDays: 41,
   },
   [JourneyStage.YIELD]: {
     name: 'Yield',
     description: "Submission to God's will, obedience, being led by God, guided growth",
     subtitle: 'The will surrenders',
-    requiredDays: 35
+    requiredDays: 41,
   },
   [JourneyStage.ARISE]: {
     name: 'Arise',
     description: 'Boldness, reawakening, readiness',
     subtitle: 'The spirit wakes up',
-    requiredDays: 45
+    requiredDays: 41,
   },
   [JourneyStage.RETURN]: {
     name: 'Return',
     description: 'Repentance, finding our way back to God as King and Father',
     subtitle: 'The prodigal comes home',
-    requiredDays: 60
+    requiredDays: 41,
   },
   [JourneyStage.RENEW]: {
     name: 'Renew',
     description: 'Restoration, recovery, rebuilding and renewing connection with God',
     subtitle: 'The old becomes new',
-    requiredDays: 80
+    requiredDays: 40,
   },
   [JourneyStage.FLOURISH]: {
     name: 'Flourish',
     description: 'Fullness, fruitfulness, answered prayers',
     subtitle: 'The fruit appears',
-    requiredDays: 100
+    requiredDays: 40,
   },
   [JourneyStage.ADVANCE]: {
     name: 'Advance',
     description: 'Spiritual warfare, spiritual advancement',
     subtitle: 'The warrior steps forward',
-    requiredDays: 110
+    requiredDays: 40,
   },
   [JourneyStage.REIGN]: {
     name: 'Reign',
     description: 'Reigning with Christ, eternal purpose',
     subtitle: 'The heir takes their place',
-    requiredDays: 130
+    requiredDays: 40,
   },
 };

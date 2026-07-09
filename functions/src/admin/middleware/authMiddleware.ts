@@ -11,18 +11,31 @@ export interface AuthedRequest extends Request {
   staff?: Staff;
 }
 
+const ROLE_RANK: Record<Staff['role'], number> = {
+  editor: 1,
+  superEditor: 2,
+  superadmin: 3,
+};
+
+function hasAtLeastRole(actual: Staff['role'] | undefined, required: Staff['role']): boolean {
+  if (!actual) return false;
+  return ROLE_RANK[actual] >= ROLE_RANK[required];
+}
+
 export const requireAuth = async (
   req: AuthedRequest,
   res: Response,
   next: NextFunction,
 ): Promise<void> => {
   if (process.env.ADMIN_AUTH_BYPASS === 'true') {
-    req.authUid = 'dev-bypass';
+    const bypassRole = (process.env.ADMIN_AUTH_BYPASS_ROLE || 'superadmin') as Staff['role'];
+    const bypassUid = process.env.ADMIN_AUTH_BYPASS_UID || 'dev-bypass';
+    req.authUid = bypassUid;
     req.staff = {
-      uid: 'dev-bypass',
-      email: 'dev@local.test',
-      name: 'Dev Admin',
-      role: 'superadmin',
+      uid: bypassUid,
+      email: process.env.ADMIN_AUTH_BYPASS_EMAIL || 'dev@local.test',
+      name: process.env.ADMIN_AUTH_BYPASS_NAME || 'Dev Admin',
+      role: bypassRole,
       status: 'active',
       authProvider: 'email',
       googleLinked: false,
@@ -74,4 +87,14 @@ export const requireSuperAdmin = (
     return;
   }
   next();
+};
+
+export const requireAtLeastRole = (required: Staff['role']) => {
+  return (req: AuthedRequest, res: Response, next: NextFunction): void => {
+    if (!hasAtLeastRole(req.staff?.role, required)) {
+      res.status(403).json({ error: `${required} role required` });
+      return;
+    }
+    next();
+  };
 };

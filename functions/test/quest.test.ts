@@ -68,6 +68,8 @@ const phone = '+15551234567';
 const baseUser: Partial<User> = {
   name: 'Sam',
   timezone: 'UTC',
+  reminderTimeLocal: '06:00',
+  awaitingOnboardingStep: null,
   questActive: false,
   vineStage: 'Grafted',
   streak: 3,

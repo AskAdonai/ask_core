@@ -2,9 +2,16 @@ import { Router, Request, Response } from 'express';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { z } from 'zod';
 import pino from 'pino';
+import type { AuthedRequest } from '../middleware/authMiddleware';
+import { requireAtLeastRole } from '../middleware/authMiddleware';
+import { authorFromStaff, canPublishRole } from '../utils/staffAttribution';
+import { deleteReplacedMediaUrl } from '../../services/r2Service';
 
 const logger = pino();
 const questRoutes = Router();
+
+// Editors and above can manage quest drafts.
+questRoutes.use(requireAtLeastRole('editor'));
 
 // Zod Schema for Validation
 const daysSchema = z.object({
@@ -72,27 +79,38 @@ const questContentSchema = z.object({
  */
 questRoutes.get('/', async (req: Request, res: Response): Promise<void> => {
   try {
-    const limit = parseInt(req.query.limit as string) || 20;
-    const page = parseInt(req.query.page as string) || 1;
+    const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
+    const page = Math.max(parseInt(req.query.page as string) || 1, 1);
+    const weekNumberFilterRaw = typeof req.query.weekNumber === 'string' ? req.query.weekNumber : undefined;
+    const levelFilter = typeof req.query.level === 'string' ? req.query.level.trim() : undefined;
+    const weekNumberFilter = weekNumberFilterRaw ? parseInt(weekNumberFilterRaw, 10) : undefined;
+    const offset = (page - 1) * limit;
 
     const db = getFirestore();
-    let query = db.collection('questContent').orderBy('weekNumber', 'asc').limit(limit);
-    
-    if (page > 1) {
-      query = query.offset((page - 1) * limit);
+    let query: FirebaseFirestore.Query<FirebaseFirestore.DocumentData> = db.collection('questContent');
+
+    if (Number.isFinite(weekNumberFilter)) {
+      query = query.where('weekNumber', '==', weekNumberFilter);
+    }
+    if (levelFilter) {
+      query = query.where('levelTracker', '==', levelFilter);
     }
 
-    const snap = await query.get();
+    query = query.orderBy('weekNumber', 'asc');
+    
+    const [snap, countSnap] = await Promise.all([
+      query.offset(offset).limit(limit).get(),
+      query.count().get(),
+    ]);
     const quests = snap.docs.map(doc => doc.data());
     
-    const countSnap = await db.collection('questContent').count().get();
     const total = countSnap.data().count;
 
     res.status(200).json({ 
       quests,
       total,
       page,
-      totalPages: Math.ceil(total / limit)
+      totalPages: Math.max(1, Math.ceil(total / limit)),
     });
   } catch (error) {
     logger.error({ error }, 'Error listing quests');
@@ -172,7 +190,7 @@ questRoutes.get('/:weekNumber', async (req: Request, res: Response): Promise<voi
  *       500:
  *         description: Internal Server Error
  */
-questRoutes.post('/:weekNumber', async (req: Request, res: Response): Promise<void> => {
+questRoutes.post('/:weekNumber', async (req: AuthedRequest, res: Response): Promise<void> => {
   try {
     const weekNumberStr = req.params.weekNumber as string;
     
@@ -182,9 +200,15 @@ questRoutes.post('/:weekNumber', async (req: Request, res: Response): Promise<vo
       res.status(400).json({ error: 'Validation failed', details: validationResult.error.format() });
       return;
     }
-    // Firestore throws errors if objects contain `undefined` fields. 
+    // Firestore throws errors if objects contain `undefined` fields.
     // JSON parse/stringify strips them safely.
     const payload = JSON.parse(JSON.stringify(validationResult.data));
+
+    // Only superEditor+ can publish.
+    if (payload.status === 'published' && !canPublishRole(req.staff?.role)) {
+      res.status(403).json({ error: 'superEditor role required to publish' });
+      return;
+    }
 
     // Ensure weekNumber in payload matches path
     const weekNumber = parseInt(weekNumberStr, 10);
@@ -202,11 +226,21 @@ questRoutes.post('/:weekNumber', async (req: Request, res: Response): Promise<vo
       return;
     }
 
-    await docRef.set({ 
-      ...payload, 
-      weekNumber, 
-      createdAt: FieldValue.serverTimestamp(), 
-      updatedAt: FieldValue.serverTimestamp() 
+    const createdBy = authorFromStaff(req.staff);
+    const isPublishing = payload.status === 'published';
+
+    await docRef.set({
+      ...payload,
+      weekNumber,
+      createdBy,
+      ...(isPublishing
+        ? {
+            publishedBy: createdBy,
+            publishedAt: FieldValue.serverTimestamp(),
+          }
+        : {}),
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
     });
     
     res.status(201).json({ status: 'success', message: `Quest week ${weekNumberStr} created` });
@@ -246,7 +280,7 @@ questRoutes.post('/:weekNumber', async (req: Request, res: Response): Promise<vo
  *       500:
  *         description: Internal Server Error
  */
-questRoutes.put('/:weekNumber', async (req: Request, res: Response): Promise<void> => {
+questRoutes.put('/:weekNumber', async (req: AuthedRequest, res: Response): Promise<void> => {
   try {
     const weekNumberStr = req.params.weekNumber as string;
     
@@ -259,6 +293,12 @@ questRoutes.put('/:weekNumber', async (req: Request, res: Response): Promise<voi
     }
     const updates = JSON.parse(JSON.stringify(validationResult.data));
 
+    // Only superEditor+ can publish.
+    if (updates.status === 'published' && !canPublishRole(req.staff?.role)) {
+      res.status(403).json({ error: 'superEditor role required to publish' });
+      return;
+    }
+
     const db = getFirestore();
     const docRef = db.collection('questContent').doc(weekNumberStr);
     const doc = await docRef.get();
@@ -268,7 +308,28 @@ questRoutes.put('/:weekNumber', async (req: Request, res: Response): Promise<voi
       return;
     }
 
-    await docRef.set({ ...updates, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    const wasPublished = doc.data()?.status === 'published';
+    const isPublishing = updates.status === 'published' && !wasPublished;
+    const publishedBy = authorFromStaff(req.staff);
+    const previousIntroImageUrl = doc.data()?.introImageUrl as string | undefined;
+
+    if (updates.introImageUrl !== undefined) {
+      await deleteReplacedMediaUrl(previousIntroImageUrl, updates.introImageUrl);
+    }
+
+    await docRef.set(
+      {
+        ...updates,
+        ...(isPublishing && publishedBy
+          ? {
+              publishedBy,
+              publishedAt: FieldValue.serverTimestamp(),
+            }
+          : {}),
+        updatedAt: FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
     const updatedDoc = await docRef.get();
     res.status(200).json({
       status: 'success',
@@ -305,8 +366,12 @@ questRoutes.put('/:weekNumber', async (req: Request, res: Response): Promise<voi
  *       500:
  *         description: Internal Server Error
  */
-questRoutes.delete('/:weekNumber', async (req: Request, res: Response): Promise<void> => {
+questRoutes.delete('/:weekNumber', async (req: AuthedRequest, res: Response): Promise<void> => {
   try {
+    if (req.staff?.role !== 'superadmin') {
+      res.status(403).json({ error: 'superadmin role required' });
+      return;
+    }
     const weekNumber = req.params.weekNumber as string;
     const db = getFirestore();
     const docRef = db.collection('questContent').doc(weekNumber);

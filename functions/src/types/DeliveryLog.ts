@@ -1,6 +1,6 @@
 import type { Timestamp } from 'firebase-admin/firestore';
 
-export type DeliveryLogStatus = 'sent' | 'failed' | 'skipped' | 'dispatched';
+export type DeliveryLogStatus = 'sent' | 'failed' | 'permanently_failed' | 'skipped' | 'dispatched';
 export type DeliveryPipelineStage = 'dispatcher' | 'worker';
 
 /** Latest Twilio carrier status from status callback webhook. */

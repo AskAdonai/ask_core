@@ -3,7 +3,7 @@ import { getFirestore } from 'firebase-admin/firestore';
 import { sendWhatsAppMessage } from '../services/twilioService';
 import { rescheduleAfterSend, rescheduleAfterReminder } from '../services/schedulingService';
 import { releaseExecutionLease } from '../utils/executionLease';
-import { getSpiritualTitle } from '../utils/spiritualTitles';
+import { getEffectiveStreakState } from '../services/effectiveStreakService';
 import pino from 'pino';
 
 const logger = pino();
@@ -34,12 +34,16 @@ functions.cloudEvent('processSendWorker', async (cloudEvent: any) => {
   const deliveryId: string | undefined = data.deliveryId;
   const db = getFirestore();
 
-  const {
-    writeDeliveryLog,
-    isDuplicateDelivery,
-    markDeliveryProcessed,
-  } = await import('../services/deliveryLogService');
-  const { formatDeliveryError, resolveReminderHourMinute } = await import('../utils/resolveReminderSchedule');
+    const {
+      writeDeliveryLog,
+      isDuplicateDelivery,
+      markDeliveryProcessed,
+    } = await import('../services/deliveryLogService');
+    const { formatDeliveryError, resolveReminderHourMinute } = await import('../utils/resolveReminderSchedule');
+    const {
+      recordMorningDeliveryFailure,
+      resetMorningDeliveryFailures,
+    } = await import('../services/morningDeliveryFailureService');
 
   try {
     if (deliveryId && await isDuplicateDelivery(userId, deliveryId, 'lastMorningDeliveryId')) {
@@ -86,20 +90,80 @@ functions.cloudEvent('processSendWorker', async (cloudEvent: any) => {
       throw new Error(`Missing or invalid reminder schedule for user ${userId}`);
     }
 
-    const { getJourneyPrayerContent, getKnockPrayerContent } = await import('../services/prayerCardService');
-    const { buildMorningTemplateBody, readActiveThemeId } = await import('../messages/morningMessage');
+    const journeyStage = user.journeyStage ?? 1;
+    const journeyDayIndex = user.journeyDayIndex ?? 1;
+
+    const { getJourneyPrayerContent } = await import('../services/prayerCardService');
+    const {
+      getJourneyHoldingMessage,
+      getDevotionDayNotReadyMessage,
+      areJourneyStagesReady,
+      logMissingJourneyStages,
+    } = await import('../services/journeyStageService');
+    const { buildMorningTemplateBody } = await import('../messages/morningMessage');
     const { sendMorningDevotionMessage } = await import('../services/twilioService');
 
-    const journeyContent = await getJourneyPrayerContent(user.journeyStage ?? 1, user.journeyDayIndex ?? 1);
-    const activeThemeId = readActiveThemeId(user as import('../types/User').User);
-    const themeContent = activeThemeId
-      ? await getKnockPrayerContent(activeThemeId, user.knockPrayerIndex ?? 0)
-      : null;
+    const stagesReady = await areJourneyStagesReady();
+    if (!stagesReady) {
+      logMissingJourneyStages(userId);
+      const holdingMsg = getJourneyHoldingMessage();
+      await sendWhatsAppMessage(user.phone, holdingMsg);
+      await rescheduleAfterSend(userId, user.timezone, schedule.hour, schedule.minute);
 
-    const { text: msgBody } = buildMorningTemplateBody(user as any, journeyContent, themeContent);
+      if (deliveryId) {
+        await markDeliveryProcessed(userId, deliveryId, 'lastMorningDeliveryId');
+      }
+
+      await writeDeliveryLog({
+        userId,
+        type: 'MORNING_CARD',
+        status: 'sent',
+        stage: 'worker',
+        deliveryId,
+        metadata: {
+          holdingMessage: true,
+        },
+      });
+      await resetMorningDeliveryFailures(userId);
+      return;
+    }
+
+    const journeyContent = await getJourneyPrayerContent(journeyStage, journeyDayIndex);
+
+    if (!journeyContent) {
+      const holdingMsg = getDevotionDayNotReadyMessage();
+      await sendWhatsAppMessage(user.phone, holdingMsg);
+      await rescheduleAfterSend(userId, user.timezone, schedule.hour, schedule.minute);
+
+      if (deliveryId) {
+        await markDeliveryProcessed(userId, deliveryId, 'lastMorningDeliveryId');
+      }
+
+      await writeDeliveryLog({
+        userId,
+        type: 'MORNING_CARD',
+        status: 'sent',
+        stage: 'worker',
+        deliveryId,
+        metadata: {
+          journeyStage,
+          journeyDayIndex,
+          holdingMessage: true,
+        },
+      });
+      await resetMorningDeliveryFailures(userId);
+      return;
+    }
+
+    const { text: msgBody, attachmentAudioUrl } = await buildMorningTemplateBody(user as any, journeyContent);
     const imageUrl = journeyContent?.card?.imageUrl;
 
-    const twilioSid = await sendMorningDevotionMessage(user.phone, msgBody, imageUrl);
+    const twilioSid = await sendMorningDevotionMessage(
+      user.phone,
+      msgBody,
+      imageUrl,
+      attachmentAudioUrl,
+    );
     await rescheduleAfterSend(userId, user.timezone, schedule.hour, schedule.minute);
 
     if (deliveryId) {
@@ -117,20 +181,39 @@ functions.cloudEvent('processSendWorker', async (cloudEvent: any) => {
         journeyStage: user.journeyStage ?? 1,
         journeyDayIndex: user.journeyDayIndex ?? 1,
         hasJourneyContent: !!journeyContent,
-        hasThemeContent: !!themeContent,
+        hasThemeContent: false,
       },
     });
+    await resetMorningDeliveryFailures(userId);
   } catch (error) {
     const message = formatDeliveryError(error);
     logger.error({ userId, deliveryId, error }, 'Failed to process send worker');
-    await writeDeliveryLog({
-      userId,
-      type: 'MORNING_CARD',
-      status: 'failed',
-      stage: 'worker',
-      deliveryId,
-      error: message,
-    });
+
+    const userDoc = await db.collection('users').doc(userId).get();
+    const failedUser = userDoc.data();
+    const schedule = failedUser ? resolveReminderHourMinute(failedUser) : null;
+
+    if (failedUser?.timezone && schedule) {
+      await recordMorningDeliveryFailure({
+        userId,
+        timezone: failedUser.timezone,
+        reminderHour: schedule.hour,
+        reminderMinute: schedule.minute,
+        deliveryId,
+        error,
+        journeyStage: failedUser.journeyStage,
+        journeyDayIndex: failedUser.journeyDayIndex,
+      });
+    } else {
+      await writeDeliveryLog({
+        userId,
+        type: 'MORNING_CARD',
+        status: 'failed',
+        stage: 'worker',
+        deliveryId,
+        error: message,
+      });
+    }
   } finally {
     await releaseExecutionLease('users', userId);
   }
@@ -174,24 +257,10 @@ functions.cloudEvent('processReminderWorker', async (cloudEvent: any) => {
       const createdAt = await toLocalDateTime(user.createdAt, timezone);
       const lastCheckin = await toLocalDateTime(user.lastCheckinSent, timezone);
       const hasDeclaredToday = lastActive?.hasSame(nowLocal, 'day') === true;
+      const streakState = getEffectiveStreakState(user as import('../types/User').User, timezone, nowLocal);
 
       if (!hasDeclaredToday) {
-        const activityBaseline = lastActive || joinedAt || createdAt || nowLocal;
-        const daysSinceActive = Math.floor(
-          nowLocal.startOf('day').diff(activityBaseline.startOf('day'), 'days').days
-        );
-
-        // ── Auto-pause after 7 missed days (one-time gentle check-in) ────────────
-        // Guard: only send this check-in once per absence period (lastCheckinSent
-        // must be null or itself older than 7 days so we don’t flood the user).
-        const daysSinceCheckin = lastCheckin
-          ? Math.floor(nowLocal.startOf('day').diff(lastCheckin.startOf('day'), 'days').days)
-          : Infinity;
-
-        const isAutopaused = daysSinceActive >= 7 && daysSinceCheckin >= 7;
-
-        if (isAutopaused) {
-          // Pause the user so no further morning cards fire until they RESUME
+        if (streakState.graceExhausted && !user.paused) {
           await db.collection('users').doc(userId).update({
             paused: true,
             lastCheckinSent: nowLocal.toFormat('yyyy-MM-dd'),
@@ -200,12 +269,14 @@ functions.cloudEvent('processReminderWorker', async (cloudEvent: any) => {
 
           await sendWhatsAppMessage(
             user.phone,
-            `Your vine is resting, ${user.name || 'Friend'}.\n\nIt has been a week since we last walked together. I have gently paused your daily card so your space stays quiet.\n\nWhenever you are ready to return, simply reply *RESUME* and I will be here — right where you left off. 🌿`
+            `Your vine is resting, ${user.name || 'Friend'}.\n\nYour grace window has ended without a declaration. I have gently paused your daily card so your space stays quiet.\n\nWhenever you are ready to return, simply reply *RESUME* and I will be here — right where you left off. 🌿`
           );
 
-          logger.info({ userId, daysSinceActive }, 'Auto-paused user after 7 missed days — gentle check-in sent');
-        } else {
-          // Normal evening nudge — user has not declared today.
+          logger.info(
+            { userId, inactiveDays: streakState.inactiveDays },
+            'Auto-paused user after 3-day grace exhaustion — gentle check-in sent',
+          );
+        } else if (!streakState.graceExhausted) {
           await sendWhatsAppMessage(
             user.phone,
             `You haven’t made your declaration today, ${user.name || 'Friend'}. Reply *SEEK* to keep your streak alive. 🙏`

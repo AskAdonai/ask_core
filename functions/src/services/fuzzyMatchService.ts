@@ -6,6 +6,7 @@ export const VALID_KEYWORDS = [
   'remind', 'pause', 'resume', 'help',
   'stop', 'optout', 'unsubscribe', 
   'quest', 'watch', 'log', 'quiz', 'progress', 'unquest', 'leavequest',
+  'stoptheme', 'leavetheme',
   'testmonday', 'testtuesday', 'testwednesday',
   'testthursday', 'testfriday', 'testsaturday', 'testmorning'
 ];

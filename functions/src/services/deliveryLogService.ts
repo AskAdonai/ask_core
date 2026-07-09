@@ -31,8 +31,8 @@ export const writeDeliveryLog = async (input: WriteDeliveryLogInput): Promise<st
   const doc: DeliveryLog = {
     ...input,
     sentAt,
-    expiresAt: input.pinned ? undefined : defaultExpiresAt(),
     pinned: input.pinned ?? false,
+    ...(input.pinned ? {} : { expiresAt: defaultExpiresAt() }),
   };
 
   const ref = await db.collection('deliveryLogs').add(doc);
@@ -56,40 +56,52 @@ export const writeDispatchRun = async (
 export interface ListDeliveryLogsFilters {
   type?: DeliveryLog['type'];
   status?: DeliveryLogStatus;
+  statuses?: DeliveryLogStatus[];
   userId?: string;
   since?: Date;
+  page?: number;
   limit?: number;
 }
 
 export const listDeliveryLogs = async (
   filters: ListDeliveryLogsFilters = {},
-): Promise<{ logs: Array<DeliveryLog & { id: string }> }> => {
+): Promise<{
+  logs: Array<DeliveryLog & { id: string }>;
+  total: number;
+  page: number;
+  totalPages: number;
+}> => {
   const db = getFirestore();
-  const limit = Math.min(filters.limit ?? 100, 500);
+  const limit = Math.min(filters.limit ?? 20, 50);
+  const page = Math.max(filters.page ?? 1, 1);
+  const offset = (page - 1) * limit;
 
   let query: FirebaseFirestore.Query<FirebaseFirestore.DocumentData> =
     db.collection('deliveryLogs');
 
   if (filters.type) query = query.where('type', '==', filters.type);
-  if (filters.status) query = query.where('status', '==', filters.status);
-  if (filters.userId) query = query.where('userId', '==', filters.userId);
-
-  query = query.orderBy('sentAt', 'desc').limit(limit);
-
-  const snap = await query.get();
-  let logs = snap.docs.map(doc => ({ id: doc.id, ...(doc.data() as DeliveryLog) }));
-
-  if (filters.since) {
-    const sinceMs = filters.since.getTime();
-    logs = logs.filter(log => {
-      const sentAt = log.sentAt instanceof Timestamp
-        ? log.sentAt.toDate()
-        : new Date(log.sentAt as Date);
-      return sentAt.getTime() >= sinceMs;
-    });
+  if (filters.statuses?.length) {
+    query = query.where('status', 'in', filters.statuses.slice(0, 10));
+  } else if (filters.status) {
+    query = query.where('status', '==', filters.status);
   }
+  if (filters.userId) query = query.where('userId', '==', filters.userId);
+  if (filters.since) query = query.where('sentAt', '>=', filters.since);
 
-  return { logs };
+  const [snap, countSnap] = await Promise.all([
+    query.orderBy('sentAt', 'desc').offset(offset).limit(limit).get(),
+    query.count().get(),
+  ]);
+
+  const logs = snap.docs.map(doc => ({ id: doc.id, ...(doc.data() as DeliveryLog) }));
+  const total = countSnap.data().count;
+
+  return {
+    logs,
+    total,
+    page,
+    totalPages: Math.max(1, Math.ceil(total / limit)),
+  };
 };
 
 export interface MorningDeliverySummary {
@@ -97,6 +109,7 @@ export interface MorningDeliverySummary {
   dispatched: number;
   sent: number;
   failed: number;
+  permanentlyFailed: number;
   skipped: number;
   dispatchRuns: number;
   totalEligible: number;
@@ -137,6 +150,7 @@ export const getMorningDeliverySummary = async (
     dispatched: 0,
     sent: 0,
     failed: 0,
+    permanentlyFailed: 0,
     skipped: 0,
     dispatchRuns: runsSnap.size,
     totalEligible: 0,
@@ -147,9 +161,15 @@ export const getMorningDeliverySummary = async (
   for (const log of logs) {
     if (log.status === 'dispatched') summary.dispatched += 1;
     if (log.status === 'sent') summary.sent += 1;
-    if (log.status === 'failed') summary.failed += 1;
+    if (log.status === 'failed') {
+      summary.failed += 1;
+      summary.recentFailures.push(log);
+    }
+    if (log.status === 'permanently_failed') {
+      summary.permanentlyFailed += 1;
+      summary.recentFailures.push(log);
+    }
     if (log.status === 'skipped') summary.skipped += 1;
-    if (log.status === 'failed') summary.recentFailures.push(log);
   }
 
   for (const doc of runsSnap.docs) {

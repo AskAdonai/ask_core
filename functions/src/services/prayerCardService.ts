@@ -1,52 +1,68 @@
 import { getFirestore } from 'firebase-admin/firestore';
-import type { PrayerCard } from '../types/PrayerCard';
-import type { Prayer } from '../types/schemas';
 import pino from 'pino';
+import type { PrayerCard } from '../types/PrayerCard';
+import { isPrayerCardDeliverable } from '../types/PrayerCard';
+import type { Prayer } from '../types/schemas';
 
 export type { PrayerCard };
 
-export interface ResolvedPrayerContent {
-  card?: PrayerCard;
+export interface ResolvedJourneyDevotion {
+  card: PrayerCard;
+  source: 'journey';
+}
+
+export interface ResolvedKnockPrayerContent {
   prayer: Prayer;
   themeId: string;
   prayerId?: string;
-  source: 'journey' | 'knock';
+  source: 'knock';
 }
+
+export type ResolvedPrayerContent = ResolvedJourneyDevotion | ResolvedKnockPrayerContent;
 
 const logger = pino();
 
+function isPrayerPublished(prayer: Prayer): boolean {
+  return prayer.status !== 'draft';
+}
+
 /**
- * Fetches the prayer card for a given journey stage and day index.
- * Used by the morning dispatch worker and SEEK declaration flow.
- *
- * Collection path: prayerCards/{id}
- * Query: journeyStage == stage AND dayIndex == day
+ * Resolves the devotion card for a user's position within a journey stage.
+ * `day` is the user's journeyDayIndex — maps to deliveryOrder (admin-reorderable).
  */
 export const getPrayerCard = async (
   stage: number,
-  day: number
+  day: number,
 ): Promise<PrayerCard | null> => {
   const db = getFirestore();
-  const snapshot = await db
+
+  const byDeliveryOrder = await db
+    .collection('prayerCards')
+    .where('journeyStage', '==', stage)
+    .where('deliveryOrder', '==', day)
+    .limit(1)
+    .get();
+
+  if (!byDeliveryOrder.empty) {
+    return byDeliveryOrder.docs[0].data() as PrayerCard;
+  }
+
+  const legacySnapshot = await db
     .collection('prayerCards')
     .where('journeyStage', '==', stage)
     .where('dayIndex', '==', day)
     .limit(1)
     .get();
 
-  if (snapshot.empty) {
-    logger.warn({ stage, day }, 'No prayer card found for stage/day');
-    return null;
+  if (!legacySnapshot.empty) {
+    return legacySnapshot.docs[0].data() as PrayerCard;
   }
 
-  return snapshot.docs[0].data() as PrayerCard;
+  logger.warn({ stage, day }, 'No prayer card found for stage/delivery slot');
+  return null;
 };
 
-/**
- * Legacy helper — fetches by flat "day" number (streak-based).
- * Kept for backward compatibility with workers.ts until migrated.
- * @deprecated Use getPrayerCard(stage, dayIndex) instead.
- */
+/** @deprecated Use getPrayerCard(stage, dayIndex) instead. */
 export const getPrayerCardForDay = async (day: number): Promise<PrayerCard | null> => {
   const db = getFirestore();
   const snapshot = await db
@@ -63,13 +79,12 @@ export const getPrayerCardForDay = async (day: number): Promise<PrayerCard | nul
   return snapshot.docs[0].data() as PrayerCard;
 };
 
-/**
- * Fetches a reusable prayer by document ID from a theme.
- */
-export const getPrayer = async (
-  themeId: string,
-  prayerId: string
-): Promise<Prayer | null> => {
+export const getPrayer = async (themeId: string, prayerId: string): Promise<Prayer | null> => {
+  if (!themeId?.trim() || !prayerId?.trim()) {
+    logger.warn({ themeId, prayerId }, 'Invalid theme/prayer id — skipping Firestore lookup');
+    return null;
+  }
+
   const db = getFirestore();
   const doc = await db
     .collection('prayerThemes')
@@ -83,44 +98,36 @@ export const getPrayer = async (
     return null;
   }
 
-  return doc.data() as Prayer;
+  const prayer = doc.data() as Prayer;
+  if (!isPrayerPublished(prayer)) {
+    logger.warn({ themeId, prayerId }, 'Theme prayer is draft and not deliverable');
+    return null;
+  }
+
+  return prayer;
 };
 
-/**
- * Resolves a Journey card to the Prayer it references.
- */
 export const getJourneyPrayerContent = async (
   stage: number,
-  day: number
-): Promise<ResolvedPrayerContent | null> => {
+  day: number,
+): Promise<ResolvedJourneyDevotion | null> => {
   const card = await getPrayerCard(stage, day);
   if (!card) return null;
 
-  const prayer = await getPrayer(card.themeId, card.prayerId);
-  if (!prayer) {
+  if (!isPrayerCardDeliverable(card)) {
     logger.warn(
-      { stage, day, themeId: card.themeId, prayerId: card.prayerId },
-      'Journey prayer card references missing theme prayer'
+      { stage, day, cardId: `stage${stage}-day${day}` },
+      'Journey devotion card is missing title or prayer body',
     );
     return null;
   }
 
-  return {
-    card,
-    prayer,
-    themeId: card.themeId,
-    prayerId: card.prayerId,
-    source: 'journey',
-  };
+  return { card, source: 'journey' };
 };
 
-/**
- * Fetches a prayer from prayerThemes/{themeId}/prayers sub-collection by index.
- * Returns Prayer or null if not found.
- */
 export const getKnockPrayerCard = async (
   themeId: string,
-  prayerIndex: number
+  prayerIndex: number,
 ): Promise<Prayer | null> => {
   const db = getFirestore();
   const snapshot = await db
@@ -136,24 +143,22 @@ export const getKnockPrayerCard = async (
     return null;
   }
 
-  return snapshot.docs[0].data() as Prayer;
+  const prayer = snapshot.docs[0].data() as Prayer;
+  if (!isPrayerPublished(prayer)) {
+    logger.warn({ themeId, prayerIndex }, 'KNOCK prayer is draft and not deliverable');
+    return null;
+  }
+
+  return prayer;
 };
 
-/**
- * Resolves KNOCK routing from the stored 0-based user position to the next
- * 1-based Prayer.index value.
- */
 export const getKnockPrayerContent = async (
   themeId: string,
-  knockPrayerIndex: number
-): Promise<ResolvedPrayerContent | null> => {
+  knockPrayerIndex: number,
+): Promise<ResolvedKnockPrayerContent | null> => {
   const prayerIndex = Math.max(0, knockPrayerIndex) + 1;
   const prayer = await getKnockPrayerCard(themeId, prayerIndex);
   if (!prayer) return null;
 
-  return {
-    prayer,
-    themeId,
-    source: 'knock',
-  };
+  return { prayer, themeId, source: 'knock' };
 };

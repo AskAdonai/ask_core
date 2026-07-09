@@ -13,7 +13,7 @@
  *   prayerThemes/{themeId}                     → PrayerTheme
  *   prayerThemes/{themeId}/prayers/{prayerId}  → Prayer
  *   questContent/{weekNumber}                  → QuestContent
- *   milestones/{milestoneId}                   → Milestone
+ *   streakMilestones/{milestoneId}             → StreakMilestone
  *   deliveryLogs/{logId}                       → DeliveryLog
  *   dispatchRuns/{runId}                       → DispatchRun
  *   knockMenu/current                          → KnockMenu
@@ -33,12 +33,14 @@ export type { PrayerCard }     from './PrayerCard';
 export type { PrayerTheme, Prayer, SystemConfig } from './PrayerTheme';
 export type { KnockMenu } from './KnockMenu';
 export type { QuestContent, QuestLog } from './QuestContent';
-export type { Milestone }      from './Milestone';
+export type { StreakMilestone } from './StreakMilestone';
+export type { CurriculumStage } from './Curriculum';
 export type { DeliveryLog, DispatchRun } from './DeliveryLog';
 
 // ── Sub-collections ──────────────────────────────────────────────────────────
 export type { JournalEntry }   from './JournalEntry';
 export type { DeclarationLog } from './DeclarationLog';
+export type { StreakHistoryEntry } from './StreakHistory';
 
 // ── Media & Daily Declarations ───────────────────────────────────────────────
 export type { Media, MediaCategory } from './Media';

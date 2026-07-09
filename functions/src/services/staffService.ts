@@ -46,24 +46,95 @@ export interface CreateStaffInput {
   invitedBy?: string;
 }
 
+const resolveAuthProvider = (
+  providers: Array<{ providerId: string }>,
+): { authProvider: StaffAuthProvider; googleLinked: boolean } => {
+  const ids = new Set(providers.map((p) => p.providerId));
+  const hasPassword = ids.has('password');
+  const hasGoogle = ids.has('google.com');
+
+  if (hasPassword && hasGoogle) return { authProvider: 'both', googleLinked: true };
+  if (hasGoogle) return { authProvider: 'google', googleLinked: true };
+  return { authProvider: 'email', googleLinked: false };
+};
+
+/**
+ * Creates a staff directory profile.
+ *
+ * If Firebase Auth already has this email (e.g. prior Google sign-in) but there
+ * is no staff doc yet, links that existing Auth user instead of failing with
+ * "email already exists".
+ */
 export const createStaffMember = async (input: CreateStaffInput): Promise<Staff> => {
   const auth = getAuth();
-  const status = input.status ?? (input.password ? 'active' : 'invited');
+  const email = input.email.trim().toLowerCase();
+  const name = input.name.trim();
+  const password = input.password?.trim() || undefined;
+  const status = input.status ?? (password ? 'active' : 'invited');
 
-  const userRecord = await auth.createUser({
-    email: input.email,
-    password: input.password,
-    displayName: input.name,
-    disabled: status === 'suspended',
-  });
+  let userRecord;
+  let linkedExistingAuth = false;
+
+  try {
+    userRecord = await auth.getUserByEmail(email);
+    linkedExistingAuth = true;
+  } catch (error) {
+    const code =
+      error && typeof error === 'object' && 'code' in error
+        ? String((error as { code?: string }).code)
+        : undefined;
+    if (code !== 'auth/user-not-found') {
+      throw error;
+    }
+  }
+
+  if (linkedExistingAuth && userRecord) {
+    const existingStaff = await getStaffByUid(userRecord.uid);
+    if (existingStaff) {
+      const alreadyExists = new Error('An account with this email already exists.');
+      (alreadyExists as Error & { code?: string }).code = 'auth/email-already-exists';
+      throw alreadyExists;
+    }
+
+    const updates: {
+      displayName: string;
+      disabled: boolean;
+      password?: string;
+    } = {
+      displayName: name || userRecord.displayName || email,
+      disabled: status === 'suspended',
+    };
+    if (password) {
+      updates.password = password;
+    }
+
+    userRecord = await auth.updateUser(userRecord.uid, updates);
+  } else {
+    const createRequest: {
+      email: string;
+      displayName: string;
+      disabled: boolean;
+      password?: string;
+    } = {
+      email,
+      displayName: name,
+      disabled: status === 'suspended',
+    };
+    if (password) {
+      createRequest.password = password;
+    }
+    userRecord = await auth.createUser(createRequest);
+  }
+
+  const { authProvider, googleLinked } = resolveAuthProvider(userRecord.providerData);
 
   const staff: Omit<Staff, 'uid'> = {
-    email: input.email,
-    name: input.name,
+    email,
+    name: name || userRecord.displayName || email,
     role: input.role,
     status,
-    authProvider: 'email',
-    googleLinked: false,
+    authProvider,
+    googleLinked,
     invitedBy: input.invitedBy ?? null,
     createdAt: new Date(),
     updatedAt: new Date(),

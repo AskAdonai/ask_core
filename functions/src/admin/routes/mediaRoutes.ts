@@ -1,6 +1,12 @@
 import { Router, Request, Response } from 'express';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
-import { generateUploadUrl, deleteFile } from '../../services/r2Service';
+import {
+  deleteFile,
+  generateUploadUrl,
+  getPublicUrl,
+  mediaTypeFromContentType,
+  resolveUploadObjectKey,
+} from '../../services/r2Service';
 import pino from 'pino';
 
 const logger = pino();
@@ -140,14 +146,39 @@ mediaRoutes.post('/media-categories', async (req: Request, res: Response): Promi
 // POST /admin/media/upload-url - Generate pre-signed URL for Cloudflare R2
 mediaRoutes.post('/media/upload-url', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { filename, contentType } = req.body;
+    const { filename, contentType, scope, weekNumber, themeId, prayerId, journeyStage, dayIndex, deliveryOrder } = req.body;
     if (!filename || !contentType) {
       res.status(400).json({ error: 'filename and contentType are required' });
       return;
     }
 
-    const uploadUrl = await generateUploadUrl(filename, contentType);
-    res.status(200).json({ uploadUrl, filename });
+    const db = getFirestore();
+    const randomId = db.collection('media').doc().id;
+    let objectKey: string;
+
+    try {
+      objectKey = resolveUploadObjectKey({
+        filename,
+        contentType,
+        scope: scope || 'generic',
+        weekNumber: weekNumber !== undefined ? Number(weekNumber) : undefined,
+        themeId,
+        prayerId,
+        journeyStage: journeyStage !== undefined ? Number(journeyStage) : undefined,
+        dayIndex: dayIndex !== undefined ? Number(dayIndex) : undefined,
+        deliveryOrder: deliveryOrder !== undefined ? Number(deliveryOrder) : undefined,
+        randomId,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Invalid upload scope';
+      res.status(400).json({ error: message });
+      return;
+    }
+
+    const uploadUrl = await generateUploadUrl(objectKey, contentType);
+    const publicUrl = getPublicUrl(objectKey);
+
+    res.status(200).json({ uploadUrl, publicUrl, mediaId: objectKey, filename: objectKey });
   } catch (error) {
     logger.error({ error }, 'Error generating pre-signed URL');
     res.status(500).json({ error: 'Internal server error' });
@@ -191,18 +222,20 @@ mediaRoutes.post('/media/upload-url', async (req: Request, res: Response): Promi
 // POST /admin/media - Save uploaded media metadata to Firestore
 mediaRoutes.post('/media', async (req: Request, res: Response): Promise<void> => {
   try {
-    const { type, url, filename, tags, categoryIds } = req.body;
+    const { mediaId, type, url, filename, contentType, tags, categoryIds } = req.body;
 
-    if (!type || !url || !filename) {
-      res.status(400).json({ error: 'type, url, and filename are required' });
+    if (!url || !filename) {
+      res.status(400).json({ error: 'url and filename are required' });
       return;
     }
 
+    const resolvedType = type || mediaTypeFromContentType(contentType || '');
+
     const db = getFirestore();
-    const docRef = db.collection('media').doc();
+    const docRef = mediaId ? db.collection('media').doc(mediaId) : db.collection('media').doc();
     const media = {
       id: docRef.id,
-      type,
+      type: resolvedType,
       url,
       filename,
       tags: tags || [],

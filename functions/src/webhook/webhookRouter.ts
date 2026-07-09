@@ -11,7 +11,7 @@ import pino from 'pino';
 
 // Handlers
 import { handleOnboarding, handleNameReply, handleTimezoneReply, handleTimeReply } from './handlers/onboardingHandler';
-import { triggerThemeSelection, handleThemeSelection } from './handlers/themeSelectionHandler';
+import { triggerThemeSelection, handleThemeSelection, handleLeaveKnockTheme } from './handlers/themeSelectionHandler';
 import { handleQuestOnboarding, handleQuestConfirmReply, handleLeaveQuest } from './handlers/questHandler';
 import { triggerReminderTimeUpdate, handleReminderTimeUpdate } from './handlers/remindHandler';
 import { handleYesDeclaration } from './handlers/yesHandler';
@@ -30,6 +30,12 @@ import {
   sendOptOutGraceReminder,
   isOptedOut,
 } from '../services/optOutService';
+import {
+  isRegistrationComplete,
+  buildUnregisteredPrompt,
+  buildIncompleteProfileMessage,
+  buildOnboardingResumeMessage,
+} from '../services/userProfileService';
 import type { User } from '../types/schemas';
 
 const logger = pino();
@@ -41,7 +47,7 @@ const ERROR_REPLY =
 const COMMAND_ESCAPE_KEYWORDS = new Set([
   'ask', 'seek', 'knock', 'help', 'journal', 'vine', 'remind',
   'quest', 'pause', 'resume', 'progress', 'watch', 'log', 'quiz',
-  'stop', 'optout', 'unsubscribe', 'unquest', 'leavequest',
+  'stop', 'optout', 'unsubscribe', 'unquest', 'leavequest', 'stoptheme', 'leavetheme',
 ]);
 
 const buildHelpMessage = (user: User): string => {
@@ -49,6 +55,7 @@ const buildHelpMessage = (user: User): string => {
     'Here are some things you can say:',
     '- *Seek*: Make today\'s declaration',
     '- *Knock*: Browse prayer themes',
+    '- *Stop Theme* / *Leave Theme*: End your current targeted-prayer theme',
     '- *Journal*: Write a journal entry',
     '- *Remind*: Change your reminder time',
     user.questActive
@@ -74,6 +81,10 @@ const dispatchKeyword = async (
   switch (keyword) {
     case 'knock':
       await triggerThemeSelection(phone, user);
+      break;
+    case 'stoptheme':
+    case 'leavetheme':
+      await handleLeaveKnockTheme(phone, user);
       break;
     case 'seek':
       await deliverDeclaration(phone, user);
@@ -163,10 +174,19 @@ export const handleWebhookRequest = async (req: Request, res: Response) => {
   }
 
   try {
-    // 2. Fetch User
+    // 2. Fetch User — unknown numbers must text ASK to register
     let user = await getUser(phone);
     if (!user) {
-      await handleOnboarding(phone, null);
+      const entryKeyword = matchKeyword(
+        normalizeInput(req.body?.Body?.trim() || '') === 'opt out'
+          ? 'optout'
+          : body
+      );
+      if (entryKeyword === 'ask') {
+        await handleOnboarding(phone, null);
+      } else {
+        await sendWhatsAppMessage(phone, buildUnregisteredPrompt());
+      }
       return respondTwilioOk(res);
     }
 
@@ -181,6 +201,9 @@ export const handleWebhookRequest = async (req: Request, res: Response) => {
       normalizedText === 'leave the quest'
     ) {
       bodyForMatch = 'unquest';
+    }
+    if (normalizedText === 'stop theme' || normalizedText === 'leave theme') {
+      bodyForMatch = normalizedText === 'stop theme' ? 'stoptheme' : 'leavetheme';
     }
 
     // Global RESET — escape any pending interactive state
@@ -250,6 +273,22 @@ export const handleWebhookRequest = async (req: Request, res: Response) => {
       await handleTimeReply(phone, rawText, user);
       return respondTwilioOk(res);
     }
+
+    // Incomplete profiles cannot use feature commands until registration finishes
+    if (!isRegistrationComplete(user)) {
+      const incompleteKeyword = matchKeyword(bodyForMatch);
+      if (incompleteKeyword === 'ask') {
+        await handleOnboarding(phone, user);
+        return respondTwilioOk(res);
+      }
+      if (incompleteKeyword === 'help') {
+        await sendWhatsAppMessage(phone, buildOnboardingResumeMessage(user));
+        return respondTwilioOk(res);
+      }
+      await sendWhatsAppMessage(phone, buildIncompleteProfileMessage(user));
+      return respondTwilioOk(res);
+    }
+
     if (user.awaitingReminderTime) {
       await handleReminderTimeUpdate(phone, rawText, user);
       return respondTwilioOk(res);

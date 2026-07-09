@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import pino from 'pino';
 
+
 const logger = pino();
 const configRoutes = Router();
 

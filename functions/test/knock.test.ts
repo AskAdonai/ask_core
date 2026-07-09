@@ -2,6 +2,7 @@ const sendWhatsAppMessage = jest.fn();
 const sendKnockResponse = jest.fn();
 const update = jest.fn();
 const getJourneyPrayerContent = jest.fn();
+const getPrayerCard = jest.fn();
 const getKnockPrayerContent = jest.fn();
 const getActiveKnockTheme = jest.fn();
 const incrementStreak = jest.fn();
@@ -39,6 +40,7 @@ jest.mock('../src/services/twilioService', () => ({
 
 jest.mock('../src/services/prayerCardService', () => ({
   getJourneyPrayerContent,
+  getPrayerCard,
   getKnockPrayerContent,
 }));
 
@@ -48,6 +50,17 @@ jest.mock('../src/services/knockSessionService', () => ({
 
 jest.mock('../src/services/streakService', () => ({
   incrementStreak,
+  recordMultiplyDeclaration: jest.fn(),
+}));
+
+jest.mock('../src/services/streakMilestoneService', () => ({
+  buildMilestoneCelebration: jest.fn().mockResolvedValue({ text: '', highestReached: 0 }),
+}));
+
+jest.mock('../src/services/journeyStageService', () => ({
+  getJourneyStage: jest.fn().mockResolvedValue({ stageNumber: 1, title: 'Believe', dayCount: 3 }),
+  getMaxStageNumber: jest.fn().mockResolvedValue(9),
+  buildJourneyCompletionMessage: jest.fn(),
 }));
 
 jest.mock('../src/services/userService', () => ({
@@ -71,18 +84,26 @@ describe('SEEK declaration flow', () => {
   const phone = '+15551234567';
   const originalNodeEnv = process.env.NODE_ENV;
   const user: Partial<User> = {
+    name: 'Friend',
     timezone: 'Africa/Lagos',
+    reminderTimeLocal: '06:00',
+    awaitingOnboardingStep: null,
     journeyStage: 1,
     journeyDayIndex: 1,
     vineStage: 'Grafted',
     streak: 0,
+    lastMilestoneStreakDays: 0,
   };
 
   beforeEach(() => {
     jest.clearAllMocks();
     getActiveKnockTheme.mockResolvedValue(null);
     getKnockPrayerContent.mockResolvedValue(null);
-    getJourneyPrayerContent.mockResolvedValue(null);
+    getJourneyPrayerContent.mockResolvedValue({
+      card: { title: 'Standing In Freedom', prayerText: 'Lord, help me walk in freedom today.' },
+      source: 'journey',
+    });
+    getPrayerCard.mockResolvedValue(null);
     process.env.FIREBASE_PROJECT_ID = 'test-project';
   });
 
@@ -92,11 +113,9 @@ describe('SEEK declaration flow', () => {
   });
 
   it('delivers the declaration, audio, and opens the YES loop', async () => {
-    getJourneyPrayerContent.mockResolvedValue({
-      prayer: {
-        declarationText: 'The Lord is my shepherd; I shall not want.',
-        declarationAudioUrl: 'https://cdn.example.test/declaration.mp3',
-      },
+    getPrayerCard.mockResolvedValue({
+      declarationText: 'The Lord is my shepherd; I shall not want.',
+      declarationAudioUrl: 'https://cdn.example.test/declaration.mp3',
     });
 
     await deliverDeclaration(phone, user);
@@ -105,6 +124,60 @@ describe('SEEK declaration flow', () => {
       phone,
       'The Lord is my shepherd; I shall not want.',
       ['https://cdn.example.test/declaration.mp3'],
+    );
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({
+      awaitingDeclarationYes: true,
+      declarationContentStage: 1,
+      declarationContentDayIndex: 1,
+      declarationContentDate: expect.any(String),
+    }));
+  });
+
+  it('same-day second SEEK keeps snapshotted day when live pointer already advanced', async () => {
+    const { DateTime } = await import('luxon');
+    const todayStr = DateTime.now().setZone('Africa/Lagos').toFormat('yyyy-MM-dd');
+
+    getPrayerCard.mockResolvedValue({
+      declarationText: 'Day five declaration',
+      declarationAudioUrl: 'https://cdn.example.test/day5.mp3',
+    });
+
+    await deliverDeclaration(phone, {
+      ...user,
+      journeyStage: 1,
+      journeyDayIndex: 6,
+      declarationContentDate: todayStr,
+      declarationContentStage: 1,
+      declarationContentDayIndex: 5,
+    });
+
+    expect(getPrayerCard).toHaveBeenCalledWith(1, 5);
+    expect(sendKnockResponse).toHaveBeenCalledWith(
+      phone,
+      'Day five declaration',
+      ['https://cdn.example.test/day5.mp3'],
+    );
+    // Snapshot already present — do not rewrite content day fields
+    expect(update).toHaveBeenCalledWith(
+      expect.not.objectContaining({
+        declarationContentDayIndex: expect.anything(),
+      }),
+    );
+  });
+
+  it('uses fallback declaration when the journey card has no declarationText', async () => {
+    getPrayerCard.mockResolvedValue({
+      title: '',
+      prayerText: '',
+      declarationText: '',
+    });
+
+    await deliverDeclaration(phone, user);
+
+    expect(sendKnockResponse).toHaveBeenCalledWith(
+      phone,
+      "I declare God's goodness over my life today.",
+      [],
     );
     expect(update).toHaveBeenCalledWith(expect.objectContaining({
       awaitingDeclarationYes: true,
@@ -117,6 +190,7 @@ describe('SEEK declaration flow', () => {
       streak: 1,
       vineStage: 'Grafted',
       alreadyDeclaredToday: false,
+      streakReset: false,
     });
 
     await handleYesDeclaration(phone, 'yes', user);
@@ -126,7 +200,7 @@ describe('SEEK declaration flow', () => {
       phone,
       expect.stringContaining('Declaration received. Well done, Friend. Your vine grows stronger today. 🌿'),
     );
-    expect(update).not.toHaveBeenCalledWith(expect.objectContaining({
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({
       awaitingDeclarationYes: true,
     }));
   });
@@ -142,6 +216,7 @@ describe('SEEK declaration flow', () => {
       streak: 1,
       vineStage: 'Grafted',
       alreadyDeclaredToday: false,
+      streakReset: false,
     });
 
     const status = jest.fn().mockReturnThis();

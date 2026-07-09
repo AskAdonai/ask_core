@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import adminRouter from './adminRouter';
 import pino from 'pino';
+import { isAdminOriginAllowed, parseAllowedAdminOrigins } from './corsPolicy';
 
 const logger = pino();
 
@@ -14,23 +15,24 @@ const logger = pino();
 export const createAdminApp = (): express.Application => {
   const app = express();
 
-  // Restrict CORS to allowed domains from environment variables
-  const allowedOrigins = process.env.ALLOWED_ADMIN_ORIGINS
-    ? process.env.ALLOWED_ADMIN_ORIGINS.split(',')
-    : ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:5173',""]; // Localdev fallbacks
+  const allowedOrigins = parseAllowedAdminOrigins(process.env.ALLOWED_ADMIN_ORIGINS);
+
+  if (allowedOrigins.length === 0) {
+    logger.warn('ALLOWED_ADMIN_ORIGINS is empty — browser CORS requests will be rejected');
+  } else {
+    logger.info({ allowedOrigins }, 'Admin API CORS allowlist loaded');
+  }
 
   app.use(cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (like server-to-server or curl)
-      if (!origin) return callback(null, true);
-
-      if (allowedOrigins.includes(origin)) {
+      if (isAdminOriginAllowed(origin, allowedOrigins)) {
         return callback(null, true);
-      } else {
-        logger.warn({ origin }, 'CORS blocked request from unauthorized origin');
-        return callback(new Error('The CORS policy for this API does not allow access from the specified Origin.'), false);
       }
-    }
+
+      logger.warn({ origin, allowedOrigins }, 'CORS blocked request from unauthorized origin');
+      // Do not pass an Error — that becomes HTTP 500. Deny without throwing.
+      return callback(null, false);
+    },
   }));
 
   app.use(express.json());

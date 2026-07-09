@@ -4,13 +4,12 @@
   "main": "lib/index.js",
   "scripts": {
     "build": "tsc",
-    "gcp-build": "tsc",
+    "gcp-build": "node -e \"require('fs').accessSync('lib/index.js')\"",
     "dev": "ts-node src/server.ts",
     "start:server": "node lib/server.js",
     "test": "jest --config jest.config.ts",
     "seed:quests": "npx ts-node seed_quests.ts",
-    "seed:devotion": "npx ts-node src/seed/prayerContent.seed.ts",
-    "seed:content": "npm run seed:devotion && npm run seed:quests",
+    "seed:content": "npm run seed:quests",
     "logs": "gcloud functions logs read"
   },
   "engines": {

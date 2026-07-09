@@ -1,23 +1,38 @@
-# Never upload node_modules — GCP Cloud Build installs them fresh from package.json
+# Root ignore when uploading from whatsappBot/ (deploy uses --source=functions).
+# See functions/.gcloudignore for the deploy bundle rules.
+
 node_modules/
 functions/node_modules/
 **/node_modules/
 
-# Exclude all .env files — secrets come from GCP Secret Manager in production
 .env
 functions/.env
 **/.env
 **/*.env
+functions/.env.yaml
+functions/.env.example
 
-# Exclude development logs and test files
 server.log
 *.log
 **/*.test.ts
+**/*.test.js
 
-# Deploy uses --source=functions (functions/.gcloudignore applies there).
-# Do not exclude functions/src/ — Cloud Build compiles TypeScript on deploy.
+functions/src/
+functions/test/
+functions/coverage/
+functions/scripts/
+functions/tsconfig.json
+functions/jest.config.ts
+functions/package-lock.json
+**/*.md
 
-# Exclude local dev config
 .text.txt
 docker-compose.yml
 Dockerfile*
+.github/
+DEPLOYMENT.md
+checklist.txt
+teardown.sh
+deploy.sh
+README.md
+ADMIN_API_DOCS.md

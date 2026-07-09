@@ -1,5 +1,6 @@
-import { sendWhatsAppMessage } from '../../services/twilioService';
-import { startKnockSession } from '../../services/knockSessionService';
+import { sendKnockThemeConfirmMessage, sendWhatsAppMessage } from '../../services/twilioService';
+import { startKnockSession, clearKnockSession, getActiveKnockTheme } from '../../services/knockSessionService';
+import { deliverNextKnockPrayer } from '../../services/knockPrayerDeliveryService';
 import {
   DEFAULT_KNOCK_MENU_INSTRUCTION,
   getKnockMenuDisplay,
@@ -93,9 +94,24 @@ export const sendKnockThemeMenu = async (
   return true;
 };
 
-/** KNOCK — opens the prayer theme selection menu. */
+/** KNOCK — delivers the next targeted prayer or opens the theme selection menu. */
 export const triggerThemeSelection = async (phone: string, user: Partial<User> | null) => {
   if (!user) return;
+
+  const activeTheme = user.activeKnockTheme;
+  if (activeTheme && !user.knockThemeExhausted) {
+    const db = getFirestore();
+    const themeDoc = await db.collection('prayerThemes').doc(activeTheme).get();
+    const themeName = (themeDoc.data() as PrayerTheme | undefined)?.displayName || activeTheme;
+    await deliverNextKnockPrayer(
+      phone,
+      activeTheme,
+      themeName,
+      user,
+    );
+    logger.info({ phone, theme: activeTheme }, 'Delivered next KNOCK prayer for active theme');
+    return;
+  }
 
   const menuSent = await sendKnockThemeMenu(phone);
   if (!menuSent) {
@@ -149,15 +165,42 @@ export const handleThemeSelection = async (phone: string, text: string, user: Pa
 
   await startKnockSession(phone, selectedTheme.themeId);
 
-  const confirmMsg =
-    `${selectedTheme.displayName}. I am bringing you targeted prayers for this season.\n\n` +
-    `Your next morning content will carry these prayers. Your journey continues alongside. Type *KNOCK* anytime to change your focus.\n\n` +
-    `• *SEEK* — make today's declaration\n` +
-    `• *KNOCK* — browse prayer themes\n` +
-    `• *VINE* — my growth`;
+  await deliverNextKnockPrayer(
+    phone,
+    selectedTheme.themeId,
+    selectedTheme.displayName,
+    {
+      timezone: user.timezone,
+      knockCount: 1,
+      lastKnockDate: '',
+    },
+  );
 
-  await sendWhatsAppMessage(phone, confirmMsg);
+  await sendKnockThemeConfirmMessage(phone, {
+    themeName: selectedTheme.displayName,
+  });
   logger.info({ phone, theme: selectedTheme.themeId }, 'User selected KNOCK theme');
+};
+
+/** Clears the active targeted-prayer theme without unsubscribing from ASK. */
+export const handleLeaveKnockTheme = async (phone: string, user: Partial<User> | null) => {
+  if (!user) return;
+
+  const activeTheme = await getActiveKnockTheme(phone);
+  if (!activeTheme) {
+    await sendWhatsAppMessage(
+      phone,
+      `You do not have an active targeted-prayer theme right now. Reply *KNOCK* to browse themes.`,
+    );
+    return;
+  }
+
+  await clearKnockSession(phone);
+  await sendWhatsAppMessage(
+    phone,
+    `Your targeted-prayer theme has been cleared. Your daily ASK journey continues as normal.\n\nReply *KNOCK* anytime to choose a new theme.`,
+  );
+  logger.info({ phone, theme: activeTheme }, 'User left active KNOCK theme');
 };
 
 export { DEFAULT_KNOCK_MENU_INSTRUCTION, KNOCK_UNAVAILABLE_IN_COUNTRY_MESSAGE } from '../../services/knockMenuService';

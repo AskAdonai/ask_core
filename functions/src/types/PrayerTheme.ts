@@ -1,4 +1,5 @@
 import type { Timestamp } from 'firebase-admin/firestore';
+import type { ContentAuthor } from './ContentAuthor';
 
 /**
  * prayerThemes/{themeId}
@@ -13,6 +14,9 @@ export interface PrayerTheme {
   category: string;       // grouping e.g. "Health", "Finance", "Relationships"
   menuOrder: number;      // sort/order number in the KNOCK selection menu
   available: boolean;     // false = hidden from menu (upcoming/maintenance)
+  createdBy?: ContentAuthor;
+  publishedBy?: ContentAuthor;
+  publishedAt?: Timestamp | Date;
   createdAt?: Timestamp | Date;
   updatedAt?: Timestamp | Date;
 }
@@ -24,23 +28,28 @@ export interface PrayerTheme {
  * prayerThemes/{themeId}/prayers/{prayerId}
  *
  * Individual prayer entries within a reusable prayer theme.
- * Fetched sequentially by index — User.knockPrayerIndex tracks the position.
+ * Fetched sequentially by index — User.knockCount tracks the position.
  *
  * prayerId convention: "prayer-{index}" e.g. "prayer-1", "prayer-2"
  */
 export interface Prayer {
   title: string;
   prayerText: string;            // full prayer body
+  /** Optional R2-hosted prayer audio — sent alongside KNOCK prayer text. */
+  audioUrl?: string;
   declarationText: string;       // spoken declaration to follow the prayer
   declarationAudioUrl: string;   // audio URL for the declaration
   verse: string;                 // supporting scripture (text only)
   reference: string;             // citation e.g. "John 15:5 (NIV)"
-  reflectionQuestion: string;    // one question to sit with
+  reflectionQuestion?: string;   // legacy — not used in KNOCK delivery
   index: number;                 // 1-based sequence within the theme
+  status?: 'draft' | 'published';
+  createdBy?: ContentAuthor;
+  publishedBy?: ContentAuthor;
+  publishedAt?: Timestamp | Date;
   createdAt?: Timestamp | Date;
   updatedAt?: Timestamp | Date;
 }
-
 
 /**
  * systemConfig/{configId}

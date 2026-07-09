@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { deleteReplacedMediaUrl } from '../../services/r2Service';
 import pino from 'pino';
 
 const logger = pino();
@@ -42,6 +43,40 @@ prayerCardRoutes.get('/', async (req: Request, res: Response): Promise<void> => 
     res.status(200).json({ prayerCards });
   } catch (error) {
     logger.error({ error }, 'Error listing prayer cards');
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * POST /admin/prayer-cards/reorder
+ * Reassigns deliveryOrder within a stage — changes user delivery sequence.
+ */
+prayerCardRoutes.post('/reorder', async (req: Request, res: Response): Promise<void> => {
+  try {
+    const journeyStage = Number(req.body.journeyStage);
+    const orderedCardIds = req.body.orderedCardIds as string[] | undefined;
+
+    if (!Number.isFinite(journeyStage) || journeyStage < 1 || !Array.isArray(orderedCardIds) || orderedCardIds.length === 0) {
+      res.status(400).json({ error: 'journeyStage and orderedCardIds[] are required' });
+      return;
+    }
+
+    const db = getFirestore();
+    const batch = db.batch();
+
+    orderedCardIds.forEach((cardId, index) => {
+      const deliveryOrder = index + 1;
+      batch.set(
+        db.collection('prayerCards').doc(cardId),
+        { deliveryOrder, updatedAt: FieldValue.serverTimestamp() },
+        { merge: true },
+      );
+    });
+
+    await batch.commit();
+    res.status(200).json({ status: 'success', journeyStage, count: orderedCardIds.length });
+  } catch (error) {
+    logger.error({ error }, 'Error reordering prayer cards');
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -196,6 +231,14 @@ prayerCardRoutes.put('/:cardId', async (req: Request, res: Response): Promise<vo
     if (!doc.exists) {
       res.status(404).json({ error: `Prayer card ${cardId} not found. Use POST to create.` });
       return;
+    }
+
+    const previous = doc.data() as Record<string, string | undefined>;
+    if (updates.audioUrl !== undefined) {
+      await deleteReplacedMediaUrl(previous.audioUrl, updates.audioUrl);
+    }
+    if (updates.morningVoiceNoteUrl !== undefined) {
+      await deleteReplacedMediaUrl(previous.morningVoiceNoteUrl, updates.morningVoiceNoteUrl);
     }
 
     await docRef.set({ ...updates, updatedAt: FieldValue.serverTimestamp() }, { merge: true });

@@ -1,11 +1,8 @@
 import { Request, Response } from 'express';
 import { getUser } from '../../services/userService';
 import { sendMorningDevotionMessage, sendWhatsAppMessage } from '../../services/twilioService';
-import {
-  getJourneyPrayerContent,
-  getKnockPrayerContent,
-} from '../../services/prayerCardService';
-import { buildMorningTemplateBody, readActiveThemeId } from '../../messages/morningMessage';
+import { getJourneyPrayerContent } from '../../services/prayerCardService';
+import { buildMorningTemplateBody } from '../../messages/morningMessage';
 import type { User } from '../../types/User';
 import { respondTwilioOk } from '../../utils/twilioWebhookResponse';
 
@@ -35,16 +32,29 @@ export const handleTestMorning = async (req: Request, res: Response) => {
     const journeyStage = user.journeyStage ?? 1;
     const journeyDayIndex = user.journeyDayIndex ?? 1;
 
-    const journeyContent = await getJourneyPrayerContent(journeyStage, journeyDayIndex);
-    const activeThemeId = readActiveThemeId(user as User);
-    const themeContent = activeThemeId
-      ? await getKnockPrayerContent(activeThemeId, user.knockPrayerIndex ?? 0)
-      : null;
+    const {
+      getJourneyHoldingMessage,
+      getDevotionDayNotReadyMessage,
+      areJourneyStagesReady,
+    } = await import('../../services/journeyStageService');
 
-    const { text: msgBody } = buildMorningTemplateBody(user as User, journeyContent, themeContent);
+    const stagesReady = await areJourneyStagesReady();
+    if (!stagesReady) {
+      await sendWhatsAppMessage(phone, getJourneyHoldingMessage());
+      return respondTwilioOk(res);
+    }
+
+    const journeyContent = await getJourneyPrayerContent(journeyStage, journeyDayIndex);
+
+    if (!journeyContent) {
+      await sendWhatsAppMessage(phone, getDevotionDayNotReadyMessage());
+      return respondTwilioOk(res);
+    }
+
+    const { text: msgBody, attachmentAudioUrl } = await buildMorningTemplateBody(user as User, journeyContent);
     const imageUrl = journeyContent?.card?.imageUrl;
 
-    await sendMorningDevotionMessage(phone, msgBody, imageUrl);
+    await sendMorningDevotionMessage(phone, msgBody, imageUrl, attachmentAudioUrl);
     return respondTwilioOk(res);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);

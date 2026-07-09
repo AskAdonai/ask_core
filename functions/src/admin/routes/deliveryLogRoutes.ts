@@ -29,11 +29,15 @@ deliveryLogRoutes.get('/', async (req: Request, res: Response): Promise<void> =>
     const status = typeof req.query.status === 'string'
       ? req.query.status as DeliveryLog['status']
       : undefined;
+    const statuses = typeof req.query.statuses === 'string'
+      ? req.query.statuses.split(',').map((value) => value.trim()).filter(Boolean) as DeliveryLog['status'][]
+      : undefined;
     const userId = typeof req.query.userId === 'string' ? req.query.userId : undefined;
     const since = parseDateParam(req.query.since);
     const limit = req.query.limit ? Number(req.query.limit) : undefined;
+    const page = req.query.page ? Number(req.query.page) : undefined;
 
-    const result = await listDeliveryLogs({ type, status, userId, since, limit });
+    const result = await listDeliveryLogs({ type, status, statuses, userId, since, limit, page });
     res.status(200).json(result);
   } catch (error) {
     logger.error({ error }, 'Error listing delivery logs');

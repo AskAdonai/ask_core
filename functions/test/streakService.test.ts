@@ -1,4 +1,4 @@
-import { incrementStreak } from '../src/services/streakService';
+import { incrementStreak, recordMultiplyDeclaration } from '../src/services/streakService';
 import { DateTime } from 'luxon';
 
 const mockGet = jest.fn();
@@ -54,6 +54,7 @@ describe('streakService', () => {
           streak: 5,
           vineStage: 'Grafted',
           declarationsToday: 0,
+          graceDaysRemaining: 3,
           lastActiveDate: { toDate: () => pastDate },
         }),
       });
@@ -65,6 +66,7 @@ describe('streakService', () => {
         streak: 6,
         vineStage: 'Grafted',
         alreadyDeclaredToday: false,
+        streakReset: false,
       });
 
       // Assert transaction updates
@@ -74,14 +76,14 @@ describe('streakService', () => {
       );
     });
 
-    it('increments declarations only if already done today', async () => {
+    it('routes to multiply path when already declared today', async () => {
       const todayDate = DateTime.now().setZone('UTC').toJSDate();
       mockGet.mockResolvedValueOnce({
         exists: true,
         data: () => ({
           streak: 5,
           vineStage: 'Rooted',
-          declarationsToday: 1,
+          declarationsToday: 2,
           lastActiveDate: { toDate: () => todayDate },
         }),
       });
@@ -93,12 +95,80 @@ describe('streakService', () => {
         streak: 5,
         vineStage: 'Rooted',
         alreadyDeclaredToday: true,
+        streakReset: false,
       });
 
-      // Should not update streak
       const updateCalls = mockUpdate.mock.calls;
       const streakUpdateCall = updateCalls.find(call => call[1].streak !== undefined);
       expect(streakUpdateCall).toBeUndefined();
+    });
+
+    it('resets streak to 1 and writes shadow history when grace is exhausted', async () => {
+      const fiveDaysAgo = DateTime.now().setZone('UTC').minus({ days: 5 }).toJSDate();
+      mockGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          streak: 12,
+          vineStage: 'Growing',
+          declarationsToday: 0,
+          graceDaysRemaining: 3,
+          lastActiveDate: { toDate: () => fiveDaysAgo },
+        }),
+      });
+
+      const result = await incrementStreak('+15551234567', 'UTC');
+
+      expect(result).toEqual({
+        incremented: true,
+        streak: 1,
+        vineStage: 'Grafted',
+        alreadyDeclaredToday: false,
+        streakReset: true,
+      });
+      expect(mockSet).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          previousStreak: 12,
+          previousVineStage: 'Growing',
+          reason: 'grace_exhausted',
+        }),
+      );
+    });
+  });
+
+  describe('recordMultiplyDeclaration', () => {
+    it('increments declarationsToday when already declared today', async () => {
+      const todayDate = DateTime.now().setZone('UTC').toJSDate();
+      mockGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          declarationsToday: 2,
+          lastActiveDate: { toDate: () => todayDate },
+        }),
+      });
+
+      const result = await recordMultiplyDeclaration('+15551234567', 'UTC');
+
+      expect(result).toEqual({ declarationsToday: 3 });
+      expect(mockUpdate).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ declarationsToday: 3 }),
+      );
+    });
+
+    it('throws if first declaration of the day has not been made', async () => {
+      const pastDate = DateTime.now().setZone('UTC').minus({ days: 1 }).toJSDate();
+      mockGet.mockResolvedValueOnce({
+        exists: true,
+        data: () => ({
+          declarationsToday: 0,
+          lastActiveDate: { toDate: () => pastDate },
+        }),
+      });
+
+      await expect(recordMultiplyDeclaration('+15551234567', 'UTC')).rejects.toThrow(
+        'Cannot record multiply declaration before first declaration of the day',
+      );
     });
   });
 });
