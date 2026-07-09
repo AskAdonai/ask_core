@@ -346,7 +346,7 @@ build_twilio_secret_flags() {
 
   local joined
   joined="$(IFS=,; echo "${flags[*]}")"
-  log "  Attaching ${#flags[@]} secret(s) to Twilio functions"
+  log "  Attaching ${#flags[@]} secret(s) to Twilio functions" >&2
   echo "${joined}"
 }
 
