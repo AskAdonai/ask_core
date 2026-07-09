@@ -104,9 +104,16 @@ describe('media delivery', () => {
 
     await deliverKnockPrayerMessage('+15551234567', 'Healing', prayer);
 
-    expect(sendWhatsAppMessage).toHaveBeenCalledWith(
+    expect(sendWhatsAppMessage).toHaveBeenCalledTimes(2);
+    expect(sendWhatsAppMessage).toHaveBeenNthCalledWith(
+      1,
       '+15551234567',
-      expect.stringMatching(/Healing prayer[\s\S]*Lord, heal me\.[\s\S]*By his stripes we are healed\.[\s\S]*Isaiah 53:5[\s\S]*I am healed by his stripes\./),
+      expect.stringMatching(/Healing prayer[\s\S]*Lord, heal me\.[\s\S]*Isaiah 53:5[\s\S]*I am healed by his stripes\./),
+    );
+    expect(sendWhatsAppMessage).toHaveBeenNthCalledWith(
+      2,
+      '+15551234567',
+      '🎧 Prayer audio:',
       ['https://cdn.askadonai.com/prayer.mp3'],
     );
   });

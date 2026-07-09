@@ -44,7 +44,16 @@ export const deliverKnockPrayerMessage = async (
   const attachmentAudio =
     audioUrl && !isPlaceholderUrl(audioUrl) ? audioUrl : undefined;
 
-  await sendWhatsAppMessage(phone, msg, attachmentAudio ? [attachmentAudio] : undefined);
+  // WhatsApp drops Body when MediaUrl is audio — send text first, audio second.
+  await sendWhatsAppMessage(phone, msg);
+  if (attachmentAudio) {
+    await sendWhatsAppMessage(phone, '🎧 Prayer audio:', [attachmentAudio]);
+  }
+
+  logger.info(
+    { phone, themeName, bodyLength: msg.length, hasAudio: !!attachmentAudio },
+    'KNOCK prayer message sent',
+  );
 };
 
 const userDocId = (phone: string): string => phone.replace('+', '');

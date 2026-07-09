@@ -99,7 +99,6 @@ describe('KNOCK knockCount progression', () => {
     expect(sendWhatsAppMessage).toHaveBeenCalledWith(
       phone,
       expect.stringContaining('Prayer one body'),
-      undefined,
     );
     expect(update).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -121,7 +120,6 @@ describe('KNOCK knockCount progression', () => {
     expect(sendWhatsAppMessage).toHaveBeenCalledWith(
       phone,
       expect.stringContaining('Prayer one body'),
-      undefined,
     );
     expect(sendWhatsAppMessage).not.toHaveBeenCalledWith(phone, KNOCK_DAILY_LIMIT_MESSAGE);
   });
@@ -137,7 +135,6 @@ describe('KNOCK knockCount progression', () => {
     expect(sendWhatsAppMessage).toHaveBeenCalledWith(
       phone,
       expect.stringContaining('Prayer two body'),
-      undefined,
     );
     expect(update).toHaveBeenCalledWith(
       expect.objectContaining({

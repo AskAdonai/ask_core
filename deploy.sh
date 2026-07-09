@@ -423,7 +423,7 @@ build_typescript() {
   log "  Compiling TypeScript..."
   (
     cd "${FUNCTIONS_DIR}"
-    ./node_modules/.bin/tsc
+    yarn build
   )
 
   if [[ ! -f "${FUNCTIONS_DIR}/lib/index.js" ]]; then
