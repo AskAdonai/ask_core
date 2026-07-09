@@ -99,15 +99,27 @@ export const deliverNextKnockPrayer = async (
   themeId: string,
   themeName: string,
   user: Partial<KnockUserSlice>,
-): Promise<'delivered' | 'daily_limit' | 'exhausted' | 'none'> => {
+): Promise<'delivered' | 'resent' | 'daily_limit' | 'exhausted' | 'none'> => {
   const db = getFirestore();
   const timezone = user.timezone || 'UTC';
   const todayStr = DateTime.now().setZone(timezone).toFormat('yyyy-MM-dd');
   const lastKnockDate = user.lastKnockDate || '';
 
   if (lastKnockDate === todayStr) {
+    const prayers = await listThemePrayers(themeId);
+    const knockCount = resolveKnockCount(user);
+    const current = prayers[knockCount - 1];
+    if (current) {
+      await deliverKnockPrayerMessage(phone, themeName, current.data);
+      logger.info(
+        { phone, themeId, prayerId: current.id, knockCount },
+        'KNOCK same-day resend (full content)',
+      );
+      return 'resent';
+    }
+
     await sendWhatsAppMessage(phone, KNOCK_DAILY_LIMIT_MESSAGE);
-    logger.info({ phone, themeId, knockCount: resolveKnockCount(user) }, 'KNOCK daily limit reached');
+    logger.info({ phone, themeId, knockCount }, 'KNOCK daily limit reached — no prayer at position');
     return 'daily_limit';
   }
 

@@ -631,10 +631,6 @@ export const sendMorningDevotionMessage = async (
     const from = `whatsapp:${process.env.TWILIO_WHATSAPP_NUMBER}`;
     const toAddress = `whatsapp:${to}`;
 
-    if (mediaUrl) {
-      await sendWhatsAppMessage(to, templateBody, mediaUrl);
-    }
-
     const message = await withTypingIndicator(() => client.messages.create(withStatusCallback({
       from,
       to: toAddress,
@@ -645,8 +641,14 @@ export const sendMorningDevotionMessage = async (
     if (attachmentAudio) {
       await sendWhatsAppMessage(to, "Listen along to today's devotion:", [attachmentAudio]);
     }
+    if (mediaUrl) {
+      await sendWhatsAppMessage(to, "Today's devotion image:", mediaUrl);
+    }
 
-    logger.info({ messageSid: message.sid, to, hasAudio: !!attachmentAudio }, 'Morning devotion sent (interactive)');
+    logger.info(
+      { messageSid: message.sid, to, hasAudio: !!attachmentAudio, hasImage: !!mediaUrl },
+      'Morning devotion sent (interactive)',
+    );
     return message.sid;
   } catch (error) {
     logger.error({ error, to }, 'Failed to send morning devotion template — falling back to text');

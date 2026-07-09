@@ -109,7 +109,7 @@ describe('KNOCK knockCount progression', () => {
     );
   });
 
-  it('second KNOCK same day hits the daily limit', async () => {
+  it('second KNOCK same day resends full prayer content', async () => {
     const today = new Date().toISOString().slice(0, 10);
     const result = await deliverNextKnockPrayer(phone, 'career_work', 'Career', {
       timezone: 'UTC',
@@ -117,8 +117,13 @@ describe('KNOCK knockCount progression', () => {
       lastKnockDate: today,
     });
 
-    expect(result).toBe('daily_limit');
-    expect(sendWhatsAppMessage).toHaveBeenCalledWith(phone, KNOCK_DAILY_LIMIT_MESSAGE);
+    expect(result).toBe('resent');
+    expect(sendWhatsAppMessage).toHaveBeenCalledWith(
+      phone,
+      expect.stringContaining('Prayer one body'),
+      undefined,
+    );
+    expect(sendWhatsAppMessage).not.toHaveBeenCalledWith(phone, KNOCK_DAILY_LIMIT_MESSAGE);
   });
 
   it('on a new day advances knockCount and delivers the next prayer', async () => {

@@ -1,6 +1,6 @@
 import { sendKnockThemeConfirmMessage, sendWhatsAppMessage } from '../../services/twilioService';
 import { startKnockSession, clearKnockSession, getActiveKnockTheme } from '../../services/knockSessionService';
-import { deliverNextKnockPrayer } from '../../services/knockPrayerDeliveryService';
+import { deliverNextKnockPrayer, deliverKnockPrayerMessage, listThemePrayers } from '../../services/knockPrayerDeliveryService';
 import {
   DEFAULT_KNOCK_MENU_INSTRUCTION,
   getKnockMenuDisplay,
@@ -165,16 +165,14 @@ export const handleThemeSelection = async (phone: string, text: string, user: Pa
 
   await startKnockSession(phone, selectedTheme.themeId);
 
-  await deliverNextKnockPrayer(
-    phone,
-    selectedTheme.themeId,
-    selectedTheme.displayName,
-    {
-      timezone: user.timezone,
-      knockCount: 1,
-      lastKnockDate: '',
-    },
-  );
+  const prayers = await listThemePrayers(selectedTheme.themeId);
+  if (prayers.length > 0) {
+    await deliverKnockPrayerMessage(phone, selectedTheme.displayName, prayers[0].data);
+    logger.info(
+      { phone, theme: selectedTheme.themeId, prayerId: prayers[0].id },
+      'KNOCK welcome prayer on theme selection (does not consume daily slot)',
+    );
+  }
 
   await sendKnockThemeConfirmMessage(phone, {
     themeName: selectedTheme.displayName,

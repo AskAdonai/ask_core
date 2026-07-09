@@ -423,7 +423,7 @@ build_typescript() {
   log "  Compiling TypeScript..."
   (
     cd "${FUNCTIONS_DIR}"
-    npx tsc
+    ./node_modules/.bin/tsc
   )
 
   if [[ ! -f "${FUNCTIONS_DIR}/lib/index.js" ]]; then
